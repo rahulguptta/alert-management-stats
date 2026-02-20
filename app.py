@@ -50,7 +50,7 @@ if uploaded_file is not None:
 
         overall_stats = df["status"].value_counts()
 
-        fig1, ax1 = plt.subplots(figsize=(4, 3))
+        fig1, ax1 = plt.subplots(figsize=(4, 1.5))
         ax1.bar(overall_stats.index, overall_stats.values, color="yellow")
         ax1.set_xlabel("Status")
         ax1.set_ylabel("Count")
@@ -69,7 +69,7 @@ if uploaded_file is not None:
             sys_df = df[df["systemname"] == system]
             sys_stats = sys_df["status"].value_counts()
 
-            fig2, ax2 = plt.subplots(figsize=(4, 3))
+            fig2, ax2 = plt.subplots(figsize=(4, 1.5))
             ax2.bar(sys_stats.index, sys_stats.values, color="yellow")
             ax2.set_xlabel("Status")
             ax2.set_ylabel("Count")
