@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
+import matplotlib.pyplot as plt
 
 st.set_page_config(page_title="Status Statistics Dashboard", layout="wide")
 
@@ -13,7 +14,6 @@ if uploaded_file is not None:
 
     df.columns = df.columns.str.strip().str.lower()
 
-    # Required columns check
     required_cols = ["status", "systemname", "deviationtime"]
     if not all(col in df.columns for col in required_cols):
         st.error("Excel must contain columns: status, systemName, deviationTime")
@@ -45,6 +45,7 @@ if uploaded_file is not None:
         if selected_system != "All":
             df = df[df["systemname"] == selected_system]
 
+        # ================= Overall Stats =================
         st.subheader("Overall Status Statistics")
 
         overall_stats = df["status"].value_counts().reset_index()
@@ -53,7 +54,18 @@ if uploaded_file is not None:
 
         st.dataframe(overall_stats)
 
+        # Bar Chart - Overall
+        fig1, ax1 = plt.subplots()
+        ax1.bar(overall_stats["Status"], overall_stats["Count"])
+        ax1.set_xlabel("Status")
+        ax1.set_ylabel("Count")
+        ax1.set_title("Overall Status Distribution")
+        plt.xticks(rotation=45)
+        st.pyplot(fig1)
+
         st.markdown("---")
+
+        # ================= System-wise Stats =================
         st.subheader("System-wise Status Statistics")
 
         system_list = sorted(df["systemname"].dropna().unique())
@@ -67,3 +79,11 @@ if uploaded_file is not None:
             sys_stats["Percentage"] = (sys_stats["Count"] / sys_stats["Count"].sum()) * 100
 
             st.dataframe(sys_stats)
+
+            fig2, ax2 = plt.subplots()
+            ax2.bar(sys_stats["Status"], sys_stats["Count"])
+            ax2.set_xlabel("Status")
+            ax2.set_ylabel("Count")
+            ax2.set_title(f"{system} Status Distribution")
+            plt.xticks(rotation=45)
+            st.pyplot(fig2)
