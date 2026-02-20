@@ -14,18 +14,18 @@ if uploaded_file is not None:
     df.columns = df.columns.str.strip().str.lower()
 
     # Required columns check
-    required_cols = ["status", "affiliate", "date"]
+    required_cols = ["status", "systemname", "deviationtime"]
     if not all(col in df.columns for col in required_cols):
-        st.error("Excel must contain columns: status, affiliate, date")
+        st.error("Excel must contain columns: status, systemName, deviationTime")
     else:
-        df["date"] = pd.to_datetime(df["date"], errors="coerce")
-        df = df.dropna(subset=["date"])
+        df["deviationtime"] = pd.to_datetime(df["deviationtime"], errors="coerce")
+        df = df.dropna(subset=["deviationtime"])
 
         # Sidebar Filters
         st.sidebar.header("Filters")
 
-        min_date = df["date"].min()
-        max_date = df["date"].max()
+        min_date = df["deviationtime"].min()
+        max_date = df["deviationtime"].max()
 
         date_range = st.sidebar.date_input(
             "Select Time Period",
@@ -34,16 +34,16 @@ if uploaded_file is not None:
             max_value=max_date
         )
 
-        affiliates = ["All"] + sorted(df["affiliate"].dropna().unique().tolist())
-        selected_affiliate = st.sidebar.selectbox("Select Affiliate", affiliates)
+        systems = ["All"] + sorted(df["systemname"].dropna().unique().tolist())
+        selected_system = st.sidebar.selectbox("Select System", systems)
 
         # Apply Filters
         if len(date_range) == 2:
             start_date, end_date = pd.to_datetime(date_range[0]), pd.to_datetime(date_range[1])
-            df = df[(df["date"] >= start_date) & (df["date"] <= end_date)]
+            df = df[(df["deviationtime"] >= start_date) & (df["deviationtime"] <= end_date)]
 
-        if selected_affiliate != "All":
-            df = df[df["affiliate"] == selected_affiliate]
+        if selected_system != "All":
+            df = df[df["systemname"] == selected_system]
 
         st.subheader("Overall Status Statistics")
 
@@ -54,16 +54,16 @@ if uploaded_file is not None:
         st.dataframe(overall_stats)
 
         st.markdown("---")
-        st.subheader("Affiliate-wise Status Statistics")
+        st.subheader("System-wise Status Statistics")
 
-        affiliate_list = sorted(df["affiliate"].dropna().unique())
+        system_list = sorted(df["systemname"].dropna().unique())
 
-        for aff in affiliate_list:
-            st.markdown(f"### {aff}")
-            aff_df = df[df["affiliate"] == aff]
+        for system in system_list:
+            st.markdown(f"### {system}")
+            sys_df = df[df["systemname"] == system]
 
-            aff_stats = aff_df["status"].value_counts().reset_index()
-            aff_stats.columns = ["Status", "Count"]
-            aff_stats["Percentage"] = (aff_stats["Count"] / aff_stats["Count"].sum()) * 100
+            sys_stats = sys_df["status"].value_counts().reset_index()
+            sys_stats.columns = ["Status", "Count"]
+            sys_stats["Percentage"] = (sys_stats["Count"] / sys_stats["Count"].sum()) * 100
 
-            st.dataframe(aff_stats)
+            st.dataframe(sys_stats)
