@@ -45,45 +45,33 @@ if uploaded_file is not None:
         if selected_system != "All":
             df = df[df["systemname"] == selected_system]
 
-        # ================= Overall Stats =================
-        st.subheader("Overall Status Statistics")
+        # ===== Overall Plot =====
+        st.subheader("Overall Status Distribution")
 
-        overall_stats = df["status"].value_counts().reset_index()
-        overall_stats.columns = ["Status", "Count"]
-        overall_stats["Percentage"] = (overall_stats["Count"] / overall_stats["Count"].sum()) * 100
+        overall_stats = df["status"].value_counts()
 
-        st.dataframe(overall_stats)
-
-        # Bar Chart - Overall
-        fig1, ax1 = plt.subplots()
-        ax1.bar(overall_stats["Status"], overall_stats["Count"])
+        fig1, ax1 = plt.subplots(figsize=(4, 3))
+        ax1.bar(overall_stats.index, overall_stats.values, color="yellow")
         ax1.set_xlabel("Status")
         ax1.set_ylabel("Count")
-        ax1.set_title("Overall Status Distribution")
         plt.xticks(rotation=45)
         st.pyplot(fig1)
 
         st.markdown("---")
 
-        # ================= System-wise Stats =================
-        st.subheader("System-wise Status Statistics")
+        # ===== System-wise Plots =====
+        st.subheader("System-wise Status Distribution")
 
         system_list = sorted(df["systemname"].dropna().unique())
 
         for system in system_list:
             st.markdown(f"### {system}")
             sys_df = df[df["systemname"] == system]
+            sys_stats = sys_df["status"].value_counts()
 
-            sys_stats = sys_df["status"].value_counts().reset_index()
-            sys_stats.columns = ["Status", "Count"]
-            sys_stats["Percentage"] = (sys_stats["Count"] / sys_stats["Count"].sum()) * 100
-
-            st.dataframe(sys_stats)
-
-            fig2, ax2 = plt.subplots()
-            ax2.bar(sys_stats["Status"], sys_stats["Count"])
+            fig2, ax2 = plt.subplots(figsize=(4, 3))
+            ax2.bar(sys_stats.index, sys_stats.values, color="yellow")
             ax2.set_xlabel("Status")
             ax2.set_ylabel("Count")
-            ax2.set_title(f"{system} Status Distribution")
             plt.xticks(rotation=45)
             st.pyplot(fig2)
