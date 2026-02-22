@@ -3,8 +3,8 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 
-st.set_page_config(page_title="Status Statistics Dashboard", layout="wide")
-st.title("Status Statistics Dashboard")
+st.set_page_config(page_title="Monthly Utilization Report", layout="wide")
+st.title("Monthly Utilization Report")
 
 uploaded_file = st.file_uploader("Upload Excel File", type=["xlsx"])
 
@@ -32,17 +32,13 @@ if uploaded_file is not None:
             max_value=max_date
         )
 
-        systems = ["All"] + sorted(df["systemname"].dropna().unique().tolist())
-        selected_system = st.sidebar.selectbox("Select System", systems)
-
-        # Apply date filter
         if len(date_range) == 2:
             start_date, end_date = pd.to_datetime(date_range[0]), pd.to_datetime(date_range[1])
             df = df[(df["deviationtime"] >= start_date) & (df["deviationtime"] <= end_date)]
 
-        # ---- Visualization mapping (NO change to df) ----
-        def map_status(series):
-            return series.replace({
+        # ---- Visualization Mapping (NO DF CHANGE) ----
+        def map_status(s):
+            return s.replace({
                 "Closed (System)": "Closed",
                 "Closed (Implemented)": "Implemented",
                 "Closed(Implemented)": "Implemented",
@@ -50,46 +46,64 @@ if uploaded_file is not None:
                 "Closed(Rejected)": "Rejected"
             })
 
-        overall_stats = map_status(df["status"]).value_counts()
+        df["status_viz"] = map_status(df["status"])
 
-        def plot_chart(stats, title):
-            fig, ax = plt.subplots(figsize=(4, 1.5))
-            bars = ax.bar(stats.index, stats.values, color="yellow")
+        systems = sorted(df["systemname"].dropna().unique())
 
-            ymax = max(stats.values) if len(stats.values) > 0 else 1
-            ax.set_ylim(0, ymax * 1.15)
+        summary_data = []
 
-            for bar in bars:
-                height = bar.get_height()
-                y_position = min(height + ymax * 0.03, ymax * 1.10)
-                ax.text(
-                    bar.get_x() + bar.get_width() / 2,
-                    y_position,
-                    f"{int(height)}",
-                    ha="center",
-                    va="bottom",
-                    fontsize=8
-                )
+        inprogress_counts = []
+        overdue_counts = []
+        pending_counts = []
 
-            ax.set_xlabel("Status")
-            ax.set_ylabel("Count")
-            ax.set_title(title)
-            plt.xticks(rotation=45)
-            st.pyplot(fig)
+        for system in systems:
+            temp = df[df["systemname"] == system]
 
-        # Only Overall at start
-        if selected_system == "All":
-            plot_chart(overall_stats, "Overall")
+            inprog = (temp["status_viz"] == "In-Progress").sum()
+            overdue = (temp["status_viz"] == "Overdue").sum()
+            pending = (temp["status_viz"] == "Pending").sum()
 
-        # Show side-by-side once system selected
-        else:
-            filtered_df = df[df["systemname"] == selected_system]
-            system_stats = map_status(filtered_df["status"]).value_counts()
+            inprogress_counts.append(inprog)
+            overdue_counts.append(overdue)
+            pending_counts.append(pending)
 
-            col1, col2 = st.columns(2)
+            closed_count = (temp["status_viz"].isin(["Closed", "Implemented"])).sum()
+            open_count = len(temp) - closed_count
+            overdue_3 = overdue  # assuming Overdue column itself
 
-            with col1:
-                plot_chart(overall_stats, "Overall")
+            summary_data.append({
+                "System": system,
+                "Closed Alerts (Implemented)": closed_count,
+                "Open Alerts": open_count,
+                "Overdue > 3 Days": overdue_3
+            })
 
-            with col2:
-                plot_chart(system_stats, selected_system)
+        # -------- Stacked Bar Chart --------
+        fig, ax = plt.subplots(figsize=(10, 4))
+
+        x = np.arange(len(systems))
+
+        bar1 = ax.bar(x, inprogress_counts)
+        bar2 = ax.bar(x, overdue_counts, bottom=inprogress_counts)
+        bar3 = ax.bar(x, pending_counts, bottom=np.array(inprogress_counts) + np.array(overdue_counts))
+
+        # Write totals above stack
+        totals = np.array(inprogress_counts) + np.array(overdue_counts) + np.array(pending_counts)
+
+        for i, total in enumerate(totals):
+            ax.text(x[i], total + 0.5, str(int(total)),
+                    ha='center', va='bottom', fontsize=8)
+
+        ax.set_xticks(x)
+        ax.set_xticklabels(systems, rotation=45)
+        ax.set_ylabel("Active Alerts")
+        ax.set_title("Active Alerts by System")
+
+        ax.legend(["In-Progress", "Overdue", "Pending"])
+
+        st.pyplot(fig)
+
+        # -------- Summary Table Below --------
+        summary_df = pd.DataFrame(summary_data)
+        st.markdown("### Summary")
+        st.dataframe(summary_df.set_index("System"))
