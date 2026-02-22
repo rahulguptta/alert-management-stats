@@ -290,24 +290,30 @@ if uploaded_file is not None:
         st.subheader("Alert Management")
     
         # -------- Required Columns Check --------
-        required_mgmt_cols = ["causeMessage", "odsCauseTagName", "requestID", "comments", "status"]
+        required_mgmt_cols = [
+            "causeMessage",
+            "systemName",
+            "odsCauseTagName",
+            "requestID",
+            "comments",
+            "status",
+            "currentAssignee"
+        ]
+    
         for col in required_mgmt_cols:
             if col not in df_filtered.columns:
                 st.error(f"Missing required column for Alert Management: {col}")
                 st.stop()
     
-        # ================= FILTER DROPDOWNS =================
-    
+        # ================= FILTERS =================
         col1, col2 = st.columns(2)
     
-        # Category Dropdown
         category_selected = col1.selectbox(
             "Category",
             ["All", "Energy", "Production", "Environment"],
             index=0
         )
     
-        # Deviation Dropdown
         deviation_selected = col2.selectbox(
             "Deviation",
             ["All", "Pending"],
@@ -316,7 +322,7 @@ if uploaded_file is not None:
     
         df_mgmt = df_filtered.copy()
     
-        # ================= CATEGORY FILTER =================
+        # -------- Category Logic --------
         if category_selected == "Energy":
             df_mgmt = df_mgmt[
                 df_mgmt["odsCauseTagName"].str.contains("energy", case=False, na=False)
@@ -344,7 +350,7 @@ if uploaded_file is not None:
                 )
             ]
     
-        # ================= DEVIATION FILTER =================
+        # -------- Deviation Logic --------
         if deviation_selected == "Pending":
             df_mgmt = df_mgmt[
                 df_mgmt["status"].str.contains("pending", case=False, na=False)
@@ -354,37 +360,46 @@ if uploaded_file is not None:
             st.warning("No alerts found for selected filters.")
             st.stop()
     
-        # ================= DISPLAY TABLE =================
+        # ================= TABLE HEADER =================
+        header_cols = st.columns([3, 3, 2, 2, 2, 2])
     
-        for idx, row in df_mgmt.iterrows():
+        header_cols[0].markdown("**Cause (System)**")
+        header_cols[1].markdown("**KPI (Alert ID)**")
+        header_cols[2].markdown("**Current Assignee**")
+        header_cols[3].markdown("**Due Date**")
+        header_cols[4].markdown("**Action Status**")
+        header_cols[5].markdown("**Action**")
     
-            with st.container():
+        st.markdown("---")
     
-                col1, col2, col3, col4, col5, col6 = st.columns([2, 2, 1, 1, 1, 1])
+        # ================= TABLE ROWS =================
+        for _, row in df_mgmt.iterrows():
     
-                # Cause (System)
-                cause_text = f"{row['causeMessage']} ({row['systemName']})"
-                col1.markdown(f"**Cause (System)**  \n{cause_text}")
+            row_cols = st.columns([3, 3, 2, 2, 2, 2])
     
-                # KPI (with Request ID)
-                kpi_text = f"{row['odsCauseTagName']}  \n(Request ID: {row['requestID']})"
-                col2.markdown(f"**KPI**  \n{kpi_text}")
+            # Cause (System)
+            cause_text = f"{row['causeMessage']} ({row['systemName']})"
+            row_cols[0].write(cause_text)
     
-                # Current Assignee
-                col3.markdown(f"**Current Assignee**  \n{row['currentAssignee']}")
+            # KPI + Alert ID
+            kpi_text = f"{row['odsCauseTagName']} (Alert ID: {row['requestID']})"
+            row_cols[1].write(kpi_text)
     
-                # Due Date (Blank for now)
-                col4.markdown("**Due Date**  \n-")
+            # Current Assignee
+            row_cols[2].write(row["currentAssignee"])
     
-                # Action Status
-                col5.markdown(f"**Action Status**  \n{row['status']}")
+            # Due Date (Blank)
+            row_cols[3].write("-")
     
-                # Action (Comments Expander)
-                with col6:
-                    with st.expander("View Comments"):
-                        if pd.isna(row["comments"]) or row["comments"] == "":
-                            st.write("No comments available.")
-                        else:
-                            st.write(row["comments"])
+            # Action Status
+            row_cols[4].write(row["status"])
     
-                st.markdown("---")
+            # Comments Expander
+            with row_cols[5]:
+                with st.expander("View Comments"):
+                    if pd.isna(row["comments"]) or row["comments"] == "":
+                        st.write("No comments available.")
+                    else:
+                        st.write(row["comments"])
+    
+            st.markdown("---")
