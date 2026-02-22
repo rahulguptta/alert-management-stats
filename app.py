@@ -19,7 +19,7 @@ if uploaded_file is not None:
         df["deviationtime"] = pd.to_datetime(df["deviationtime"], errors="coerce")
         df = df.dropna(subset=["deviationtime"])
 
-        # Sidebar Filters
+        # ---- Filters ----
         st.sidebar.header("Filters")
 
         min_date = df["deviationtime"].min()
@@ -32,11 +32,26 @@ if uploaded_file is not None:
             max_value=max_date
         )
 
+        systems_available = sorted(df["systemname"].dropna().unique())
+        selected_system = st.sidebar.selectbox(
+            "Select System",
+            ["All"] + systems_available
+        )
+
+        # Apply date filter
         if len(date_range) == 2:
             start_date, end_date = pd.to_datetime(date_range[0]), pd.to_datetime(date_range[1])
             df = df[(df["deviationtime"] >= start_date) & (df["deviationtime"] <= end_date)]
 
-        # ---- Visualization Mapping (NO DF CHANGE) ----
+        # Apply system filter (for chart only)
+        if selected_system != "All":
+            df_chart = df[df["systemname"] == selected_system]
+            systems = [selected_system]
+        else:
+            df_chart = df.copy()
+            systems = sorted(df_chart["systemname"].dropna().unique())
+
+        # ---- Visualization Mapping (NO change to original df logic) ----
         def map_status(s):
             return s.replace({
                 "Closed (System)": "Closed",
@@ -46,18 +61,15 @@ if uploaded_file is not None:
                 "Closed(Rejected)": "Rejected"
             })
 
-        df["status_viz"] = map_status(df["status"])
-
-        systems = sorted(df["systemname"].dropna().unique())
-
-        summary_data = []
+        df_chart["status_viz"] = map_status(df_chart["status"])
 
         inprogress_counts = []
         overdue_counts = []
         pending_counts = []
+        summary_data = []
 
         for system in systems:
-            temp = df[df["systemname"] == system]
+            temp = df_chart[df_chart["systemname"] == system]
 
             inprog = (temp["status_viz"] == "In-Progress").sum()
             overdue = (temp["status_viz"] == "Overdue").sum()
@@ -79,20 +91,20 @@ if uploaded_file is not None:
             })
 
         # -------- Stacked Bar Chart --------
-        fig, ax = plt.subplots(figsize=(10, 3))  # smaller height
+        fig, ax = plt.subplots(figsize=(10, 3))
 
         x = np.arange(len(systems))
 
-        bar1 = ax.bar(x, inprogress_counts)
-        bar2 = ax.bar(x, overdue_counts, bottom=inprogress_counts)
-        bar3 = ax.bar(x, pending_counts, bottom=np.array(inprogress_counts) + np.array(overdue_counts))
+        ax.bar(x, inprogress_counts)
+        ax.bar(x, overdue_counts, bottom=inprogress_counts)
+        ax.bar(x, pending_counts,
+               bottom=np.array(inprogress_counts) + np.array(overdue_counts))
 
         totals = np.array(inprogress_counts) + np.array(overdue_counts) + np.array(pending_counts)
         ymax = max(totals) if len(totals) > 0 else 1
-
         ax.set_ylim(0, ymax * 1.1)
 
-        # Numbers just below top border
+        # Numbers below top border
         for i, total in enumerate(totals):
             ax.text(
                 x[i],
@@ -107,7 +119,18 @@ if uploaded_file is not None:
         ax.set_xticklabels(systems, rotation=45)
         ax.set_ylabel("Active Alerts")
 
-        ax.legend(["In-Progress", "Overdue", "Pending"])
+        # Remove border lines
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+
+        # Horizontal legend
+        ax.legend(
+            ["In-Progress", "Overdue", "Pending"],
+            loc="upper center",
+            bbox_to_anchor=(0.5, 1.15),
+            ncol=3,
+            frameon=False
+        )
 
         st.pyplot(fig)
 
