@@ -69,7 +69,7 @@ if uploaded_file is not None:
 
             closed_count = (temp["status_viz"].isin(["Closed", "Implemented"])).sum()
             open_count = len(temp) - closed_count
-            overdue_3 = overdue  # assuming Overdue column itself
+            overdue_3 = overdue
 
             summary_data.append({
                 "System": system,
@@ -79,7 +79,7 @@ if uploaded_file is not None:
             })
 
         # -------- Stacked Bar Chart --------
-        fig, ax = plt.subplots(figsize=(10, 4))
+        fig, ax = plt.subplots(figsize=(10, 3))  # smaller height
 
         x = np.arange(len(systems))
 
@@ -87,23 +87,31 @@ if uploaded_file is not None:
         bar2 = ax.bar(x, overdue_counts, bottom=inprogress_counts)
         bar3 = ax.bar(x, pending_counts, bottom=np.array(inprogress_counts) + np.array(overdue_counts))
 
-        # Write totals above stack
         totals = np.array(inprogress_counts) + np.array(overdue_counts) + np.array(pending_counts)
+        ymax = max(totals) if len(totals) > 0 else 1
 
+        ax.set_ylim(0, ymax * 1.1)
+
+        # Numbers just below top border
         for i, total in enumerate(totals):
-            ax.text(x[i], total + 0.5, str(int(total)),
-                    ha='center', va='bottom', fontsize=8)
+            ax.text(
+                x[i],
+                ymax * 1.05,
+                str(int(total)),
+                ha='center',
+                va='top',
+                fontsize=8
+            )
 
         ax.set_xticks(x)
         ax.set_xticklabels(systems, rotation=45)
         ax.set_ylabel("Active Alerts")
-        ax.set_title("Active Alerts by System")
 
         ax.legend(["In-Progress", "Overdue", "Pending"])
 
         st.pyplot(fig)
 
-        # -------- Summary Table Below --------
+        # -------- Summary Table --------
         summary_df = pd.DataFrame(summary_data)
         st.markdown("### Summary")
         st.dataframe(summary_df.set_index("System"))
