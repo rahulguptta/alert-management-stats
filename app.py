@@ -19,6 +19,10 @@ if uploaded_file is not None:
 
     df["deviationTime"] = pd.to_datetime(df["deviationTime"])
 
+    # Remove Closed from charts (keep only active alerts)
+    df_active = df[df["status"].str.lower() != "closed"]
+
+    # ================= Sidebar =================
     st.sidebar.header("Filters")
 
     min_date = df["deviationTime"].min()
@@ -49,19 +53,29 @@ if uploaded_file is not None:
         (df["deviationTime"] <= pd.to_datetime(end_date))
     ]
 
+    df_active_filtered = df_active[
+        (df_active["deviationTime"] >= pd.to_datetime(start_date)) &
+        (df_active["deviationTime"] <= pd.to_datetime(end_date))
+    ]
+
     if affiliate_selected != "All":
         df_filtered = df_filtered[df_filtered["systemName"] == affiliate_selected]
+        df_active_filtered = df_active_filtered[
+            df_active_filtered["systemName"] == affiliate_selected
+        ]
 
+    # ================= Tabs =================
     tab1, tab2, tab3 = st.tabs(
         ["Overview", "Alert Statistics", "Alert Management"]
     )
 
+    # ================= Overview =================
     with tab1:
-        st.subheader("Status Overview")
+        st.subheader("Active Alerts Overview")
 
         if affiliate_selected == "All":
             chart_df = (
-                df_filtered
+                df_active_filtered
                 .groupby(["systemName", "status"])
                 .size()
                 .reset_index(name="Count")
@@ -75,12 +89,12 @@ if uploaded_file is not None:
                 barmode="stack",
                 text="Count"
             )
-            fig.update_layout(xaxis_title="", yaxis_title="Alerts")
+            fig.update_layout(xaxis_title="", yaxis_title="Active Alerts")
             st.plotly_chart(fig, use_container_width=True)
 
         else:
             chart_df = (
-                df_filtered
+                df_active_filtered
                 .groupby("status")
                 .size()
                 .reset_index(name="Count")
@@ -92,7 +106,7 @@ if uploaded_file is not None:
                 y="Count",
                 text="Count"
             )
-            fig.update_layout(xaxis_title="", yaxis_title="Alerts")
+            fig.update_layout(xaxis_title="", yaxis_title="Active Alerts")
             st.plotly_chart(fig, use_container_width=True)
 
         st.markdown("### Overall Status Statistics")
@@ -111,15 +125,22 @@ if uploaded_file is not None:
             .groupby(["systemName", "status"])
             .size()
             .reset_index(name="Count")
-            .sort_values("systemName")
         )
 
-        st.dataframe(affiliate_stats, use_container_width=True)
+        pivot_table = affiliate_stats.pivot(
+            index="systemName",
+            columns="status",
+            values="Count"
+        ).fillna(0)
 
+        st.dataframe(pivot_table, use_container_width=True)
+
+    # ================= Alert Statistics =================
     with tab2:
         st.subheader("Alert Statistics")
         st.info("Placeholder for Alert Statistics")
 
+    # ================= Alert Management =================
     with tab3:
         st.subheader("Alert Management")
         st.info("Placeholder for Alert Management")
