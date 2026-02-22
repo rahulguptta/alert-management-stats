@@ -20,7 +20,7 @@ if uploaded_file is not None:
 
     df["deviationTime"] = pd.to_datetime(df["deviationTime"])
 
-    # Remove all variants of Closed for charts
+    # Remove all Closed variants for charts
     df_active = df[~df["status"].str.lower().str.contains("closed", na=False)]
 
     # ================= Sidebar =================
@@ -143,7 +143,7 @@ if uploaded_file is not None:
 
         st.dataframe(overall_stats, use_container_width=True)
 
-        # ================= Conditional Table =================
+        # ================= Show table ONLY if All selected =================
         if affiliate_selected == "All":
 
             st.markdown("### Status by Affiliate")
@@ -162,18 +162,6 @@ if uploaded_file is not None:
             ).fillna(0)
 
             st.dataframe(pivot_table, use_container_width=True)
-
-        else:
-            st.markdown(f"### Status Breakdown for {affiliate_selected}")
-
-            single_stats = (
-                df_filtered["status"]
-                .value_counts()
-                .reset_index()
-            )
-            single_stats.columns = ["Status", "Count"]
-
-            st.dataframe(single_stats, use_container_width=True)
 
     # ================= Other Tabs =================
     with tab2:
