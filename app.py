@@ -20,9 +20,6 @@ if uploaded_file is not None:
 
     df["deviationTime"] = pd.to_datetime(df["deviationTime"])
 
-    # Remove all Closed variants for charts
-    df_active = df[~df["status"].str.lower().str.contains("closed", na=False)]
-
     # ================= Sidebar =================
     st.sidebar.header("Filters")
 
@@ -166,66 +163,80 @@ if uploaded_file is not None:
 
         st.subheader("Monthly Utilization Report")
 
-        # Month filter inside tab
         df_filtered["Month"] = df_filtered["deviationTime"].dt.to_period("M")
         months_available = sorted(df_filtered["Month"].astype(str).unique())
 
-        selected_month = st.selectbox(
-            "Select Month",
-            months_available,
-            index=len(months_available) - 1
-        )
+        if len(months_available) == 0:
+            st.warning("No data available for selected period.")
+        else:
+            selected_month = st.selectbox(
+                "Select Month",
+                months_available,
+                index=len(months_available) - 1
+            )
 
-        df_month = df_filtered[
-            df_filtered["Month"].astype(str) == selected_month
-        ]
+            df_month = df_filtered[
+                df_filtered["Month"].astype(str) == selected_month
+            ]
 
-        # ================= KPIs =================
-        total_generated = len(df_month)
+            # ================= KPIs =================
+            total_generated = len(df_month)
 
-        pending = df_month["status"].str.contains("pending", case=False, na=False).sum()
-        auto_closed = df_month["status"].str.contains("system", case=False, na=False).sum()
-        implemented = df_month["status"].str.contains("implemented", case=False, na=False).sum()
-        rejected = df_month["status"].str.contains("rejected", case=False, na=False).sum()
-        wip = df_month["status"].str.contains("work", case=False, na=False).sum()
-        overdue = df_month["status"].str.contains("overdue", case=False, na=False).sum()
+            pending = df_month["status"].str.contains("pending", case=False, na=False).sum()
+            auto_closed = df_month["status"].str.contains("system", case=False, na=False).sum()
+            implemented = df_month["status"].str.contains("implemented", case=False, na=False).sum()
+            rejected = df_month["status"].str.contains("rejected", case=False, na=False).sum()
+            wip = df_month["status"].str.contains("work", case=False, na=False).sum()
+            overdue = df_month["status"].str.contains("overdue", case=False, na=False).sum()
 
-        col1, col2, col3 = st.columns(3)
-        col1.metric("Generated Alerts", total_generated)
-        col2.metric("Pending", pending)
-        col3.metric("Auto Closed", auto_closed)
+            col1, col2, col3 = st.columns(3)
+            col1.metric("Generated Alerts", total_generated)
+            col2.metric("Pending", pending)
+            col3.metric("Auto Closed", auto_closed)
 
-        st.markdown("### Closed by Team")
+            st.markdown("### Closed by Team")
 
-        c1, c2, c3, c4 = st.columns(4)
-        c1.metric("Implemented", implemented)
-        c2.metric("Rejected", rejected)
-        c3.metric("Work In Progress", wip)
-        c4.metric("Overdue", overdue)
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("Implemented", implemented)
+            c2.metric("Rejected", rejected)
+            c3.metric("Work In Progress", wip)
+            c4.metric("Overdue", overdue)
 
-        # ================= Active Alerts by Role =================
-        st.markdown("### Active Alerts by Role")
+            # ================= Active Alerts by Role =================
+            st.markdown("### Active Alerts by Role")
 
-        df_month_active = df_month[
-            ~df_month["status"].str.lower().str.contains("closed", na=False)
-        ]
+            df_month_active = df_month[
+                ~df_month["status"].str.lower().str.contains("closed", na=False)
+            ].copy()
 
-        role_df = (
-            df_month_active
-            .groupby("currentAssignee")
-            .size()
-            .reset_index(name="Count")
-        )
+            df_month_active["currentAssignee"] = (
+                df_month_active["currentAssignee"]
+                .fillna("Unassigned")
+                .astype(str)
+            )
 
-        fig_role = px.bar(
-            role_df,
-            x="currentAssignee",
-            y="Count",
-            text="Count"
-        )
+            role_df = (
+                df_month_active
+                .groupby("currentAssignee")
+                .size()
+                .reset_index(name="Count")
+                .sort_values("Count", ascending=False)
+            )
 
-        fig_role.update_layout(xaxis_title="", yaxis_title="Active Alerts")
-        st.plotly_chart(fig_role, use_container_width=True)
+            fig_role = px.bar(
+                role_df,
+                x="currentAssignee",
+                y="Count",
+                text="Count"
+            )
+
+            fig_role.update_layout(
+                xaxis_title="Role",
+                yaxis_title="Active Alerts",
+                xaxis=dict(type="category")
+            )
+
+            st.plotly_chart(fig_role, use_container_width=True)
 
     # =========================================================
     # ================= ALERT MANAGEMENT ======================
