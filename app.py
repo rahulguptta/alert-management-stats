@@ -17,7 +17,7 @@ if uploaded_file is not None:
     df["deviationTime"] = pd.to_datetime(df["deviationTime"])
 
     # ==========================================================
-    # SIDEBAR FILTERS (Used by Overview Tab Only)
+    # SIDEBAR FILTERS (Used by Overview Only)
     # ==========================================================
     st.sidebar.header("Filters")
 
@@ -54,25 +54,25 @@ if uploaded_file is not None:
     )
 
     # ==========================================================
-    # TAB 1 - OVERVIEW (Uses Sidebar Filters)
+    # TAB 1 - OVERVIEW (ONLY ACTIVE ALERTS)
     # ==========================================================
     with tab1:
 
-        st.markdown("## Alert Overview")
+        st.markdown("## Active Alerts Overview")
 
-        df_filtered["status_viz"] = df_filtered["status"].replace({
-            "Closed (System)": "Closed",
-            "Closed (Implemented)": "Implemented",
-            "Closed (Rejected)": "Rejected"
-        })
+        # Only Active Status
+        active_status = ["Pending", "Work In Progress", "Overdue"]
 
-        status_counts = df_filtered["status_viz"].value_counts()
+        df_active = df_filtered[
+            df_filtered["status"].isin(active_status)
+        ]
 
         fig1, ax1 = plt.subplots(figsize=(8, 3))
 
         if selected_system_sidebar == "All":
-            stacked = df_filtered.groupby(
-                ["systemName", "status_viz"]
+            # Stacked Active Alerts
+            stacked = df_active.groupby(
+                ["systemName", "status"]
             ).size().unstack(fill_value=0)
 
             bottom = None
@@ -105,7 +105,9 @@ if uploaded_file is not None:
             ax1.legend(ncol=len(stacked.columns))
 
         else:
-            bars = ax1.bar(status_counts.index, status_counts.values)
+            # Normal Bar for selected affiliate
+            counts = df_active["status"].value_counts()
+            bars = ax1.bar(counts.index, counts.values)
 
             for bar in bars:
                 height = bar.get_height()
@@ -124,7 +126,8 @@ if uploaded_file is not None:
 
         st.pyplot(fig1)
 
-        st.dataframe(df_filtered.head(20), use_container_width=True)
+        # Table only filtered affiliate data
+        st.dataframe(df_filtered, use_container_width=True)
 
     # ==========================================================
     # TAB 2 - ALERT MANAGEMENT (PLACEHOLDER)
@@ -133,7 +136,7 @@ if uploaded_file is not None:
         st.info("Alert Management section will be implemented later.")
 
     # ==========================================================
-    # TAB 3 - ALERT STATISTICS (MONTH FILTER ONLY)
+    # TAB 3 - ALERT STATISTICS (MONTH ONLY)
     # ==========================================================
     with tab3:
 
@@ -179,21 +182,18 @@ if uploaded_file is not None:
 
         st.metric("Target Date Revision", "—")
 
-        # =====================================================
-        # ACTIVE ALERTS BY ROLE
-        # =====================================================
+        # Active Alerts by Role
         st.markdown("### Active Alerts by Role")
 
-        df_active = df_month[
+        df_active_month = df_month[
             df_month["status_viz"].isin(
                 ["Pending", "Work In Progress", "Overdue"]
             )
         ]
 
-        role_counts = df_active["currentAssignee"].value_counts()
+        role_counts = df_active_month["currentAssignee"].value_counts()
 
         fig2, ax2 = plt.subplots(figsize=(6, 2.5))
-
         bars = ax2.bar(role_counts.index, role_counts.values)
 
         for bar in bars:
@@ -213,52 +213,6 @@ if uploaded_file is not None:
 
         plt.xticks(rotation=45)
         st.pyplot(fig2)
-
-        # =====================================================
-        # MONTHLY UTILIZATION REPORT
-        # =====================================================
-        st.markdown("### Monthly Utilization Report")
-
-        system_group = df_month.groupby(
-            ["systemName", "status_viz"]
-        ).size().unstack(fill_value=0)
-
-        fig3, ax3 = plt.subplots(figsize=(7, 3))
-
-        bottom = None
-
-        for status in system_group.columns:
-            bars = ax3.bar(
-                system_group.index,
-                system_group[status],
-                bottom=bottom,
-                label=status
-            )
-
-            for bar in bars:
-                height = bar.get_height()
-                if height > 0:
-                    ax3.text(
-                        bar.get_x() + bar.get_width()/2,
-                        bar.get_y() + height - 0.1,
-                        int(height),
-                        ha="center",
-                        va="top",
-                        fontsize=8
-                    )
-
-            if bottom is None:
-                bottom = system_group[status].values
-            else:
-                bottom = bottom + system_group[status].values
-
-        ax3.legend(ncol=len(system_group.columns))
-        ax3.spines['top'].set_visible(False)
-        ax3.spines['right'].set_visible(False)
-        ax3.spines['left'].set_visible(False)
-
-        plt.xticks(rotation=45)
-        st.pyplot(fig3)
 
         # Utilization Rate
         if total_generated > 0:
