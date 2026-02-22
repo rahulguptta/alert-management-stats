@@ -12,7 +12,7 @@ if uploaded_file is not None:
     df = pd.read_excel(uploaded_file)
     df.columns = df.columns.str.strip()
 
-    required_cols = ["deviationTime", "systemName", "status"]
+    required_cols = ["deviationTime", "systemName", "status", "currentAssignee"]
     for col in required_cols:
         if col not in df.columns:
             st.error(f"Missing required column: {col}")
@@ -49,29 +49,27 @@ if uploaded_file is not None:
         index=0
     )
 
-    # Apply filters
+    # Apply sidebar filters
     df_filtered = df[
         (df["deviationTime"] >= pd.to_datetime(start_date)) &
         (df["deviationTime"] <= pd.to_datetime(end_date))
     ]
 
-    df_active_filtered = df_active[
-        (df_active["deviationTime"] >= pd.to_datetime(start_date)) &
-        (df_active["deviationTime"] <= pd.to_datetime(end_date))
-    ]
-
     if affiliate_selected != "All":
         df_filtered = df_filtered[df_filtered["systemName"] == affiliate_selected]
-        df_active_filtered = df_active_filtered[
-            df_active_filtered["systemName"] == affiliate_selected
-        ]
+
+    df_active_filtered = df_filtered[
+        ~df_filtered["status"].str.lower().str.contains("closed", na=False)
+    ]
 
     # ================= Tabs =================
     tab1, tab2, tab3 = st.tabs(
         ["Overview", "Alert Statistics", "Alert Management"]
     )
 
-    # ================= Overview =================
+    # =========================================================
+    # ===================== OVERVIEW (UNCHANGED) ===============
+    # =========================================================
     with tab1:
 
         st.subheader("Active Alerts Overview")
@@ -131,7 +129,6 @@ if uploaded_file is not None:
             fig.update_layout(xaxis_title="", yaxis_title="Active Alerts")
             st.plotly_chart(fig, use_container_width=True)
 
-        # ================= Overall Status =================
         st.markdown("### Overall Status Statistics")
 
         overall_stats = (
@@ -143,7 +140,6 @@ if uploaded_file is not None:
 
         st.dataframe(overall_stats, use_container_width=True)
 
-        # ================= Show table ONLY if All selected =================
         if affiliate_selected == "All":
 
             st.markdown("### Status by Affiliate")
@@ -163,11 +159,77 @@ if uploaded_file is not None:
 
             st.dataframe(pivot_table, use_container_width=True)
 
-    # ================= Other Tabs =================
+    # =========================================================
+    # ================= ALERT STATISTICS ======================
+    # =========================================================
     with tab2:
-        st.subheader("Alert Statistics")
-        st.info("Placeholder")
 
+        st.subheader("Monthly Utilization Report")
+
+        # Month filter inside tab
+        df_filtered["Month"] = df_filtered["deviationTime"].dt.to_period("M")
+        months_available = sorted(df_filtered["Month"].astype(str).unique())
+
+        selected_month = st.selectbox(
+            "Select Month",
+            months_available,
+            index=len(months_available) - 1
+        )
+
+        df_month = df_filtered[
+            df_filtered["Month"].astype(str) == selected_month
+        ]
+
+        # ================= KPIs =================
+        total_generated = len(df_month)
+
+        pending = df_month["status"].str.contains("pending", case=False, na=False).sum()
+        auto_closed = df_month["status"].str.contains("system", case=False, na=False).sum()
+        implemented = df_month["status"].str.contains("implemented", case=False, na=False).sum()
+        rejected = df_month["status"].str.contains("rejected", case=False, na=False).sum()
+        wip = df_month["status"].str.contains("work", case=False, na=False).sum()
+        overdue = df_month["status"].str.contains("overdue", case=False, na=False).sum()
+
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Generated Alerts", total_generated)
+        col2.metric("Pending", pending)
+        col3.metric("Auto Closed", auto_closed)
+
+        st.markdown("### Closed by Team")
+
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Implemented", implemented)
+        c2.metric("Rejected", rejected)
+        c3.metric("Work In Progress", wip)
+        c4.metric("Overdue", overdue)
+
+        # ================= Active Alerts by Role =================
+        st.markdown("### Active Alerts by Role")
+
+        df_month_active = df_month[
+            ~df_month["status"].str.lower().str.contains("closed", na=False)
+        ]
+
+        role_df = (
+            df_month_active
+            .groupby("currentAssignee")
+            .size()
+            .reset_index(name="Count")
+        )
+
+        fig_role = px.bar(
+            role_df,
+            x="currentAssignee",
+            y="Count",
+            text="Count"
+        )
+
+        fig_role.update_layout(xaxis_title="", yaxis_title="Active Alerts")
+        st.plotly_chart(fig_role, use_container_width=True)
+
+    # =========================================================
+    # ================= ALERT MANAGEMENT ======================
+    # =========================================================
     with tab3:
         st.subheader("Alert Management")
         st.info("Placeholder")
