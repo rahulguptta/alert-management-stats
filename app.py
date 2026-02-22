@@ -17,102 +17,129 @@ if uploaded_file is not None:
     df["deviationTime"] = pd.to_datetime(df["deviationTime"])
 
     # ==========================================================
-    # ===================== FIRST PAGE =========================
+    # SIDEBAR FILTERS (Used by Overview Tab Only)
     # ==========================================================
+    st.sidebar.header("Filters")
 
-    st.markdown("## Alert Overview")
+    min_date = df["deviationTime"].min()
+    max_date = df["deviationTime"].max()
 
-    # Status mapping ONLY for visualization (df unchanged)
-    df["status_viz"] = df["status"].replace({
-        "Closed (System)": "Closed",
-        "Closed (Implemented)": "Implemented",
-        "Closed (Rejected)": "Rejected"
-    })
+    start_date, end_date = st.sidebar.date_input(
+        "Select Date Range",
+        [min_date, max_date]
+    )
 
     system_list = ["All"] + sorted(df["systemName"].dropna().unique())
-    selected_system = st.selectbox("Select System", system_list)
+    selected_system_sidebar = st.sidebar.selectbox(
+        "Select Affiliate",
+        system_list
+    )
 
-    if selected_system != "All":
-        df_view = df[df["systemName"] == selected_system]
-    else:
-        df_view = df.copy()
+    # Apply sidebar filters
+    df_filtered = df[
+        (df["deviationTime"] >= pd.to_datetime(start_date)) &
+        (df["deviationTime"] <= pd.to_datetime(end_date))
+    ]
 
-    status_counts = df_view["status_viz"].value_counts()
+    if selected_system_sidebar != "All":
+        df_filtered = df_filtered[
+            df_filtered["systemName"] == selected_system_sidebar
+        ]
 
-    fig1, ax1 = plt.subplots(figsize=(8, 3))
+    # ==========================================================
+    # TABS
+    # ==========================================================
+    tab1, tab2, tab3 = st.tabs(
+        ["Overview", "Alert Management", "Alert Statistics"]
+    )
 
-    if selected_system == "All":
-        # STACKED BAR
-        stacked = df_view.groupby(["systemName", "status_viz"]).size().unstack(fill_value=0)
-        bottom = None
+    # ==========================================================
+    # TAB 1 - OVERVIEW (Uses Sidebar Filters)
+    # ==========================================================
+    with tab1:
 
-        for status in stacked.columns:
-            bars = ax1.bar(stacked.index, stacked[status], bottom=bottom, label=status)
+        st.markdown("## Alert Overview")
+
+        df_filtered["status_viz"] = df_filtered["status"].replace({
+            "Closed (System)": "Closed",
+            "Closed (Implemented)": "Implemented",
+            "Closed (Rejected)": "Rejected"
+        })
+
+        status_counts = df_filtered["status_viz"].value_counts()
+
+        fig1, ax1 = plt.subplots(figsize=(8, 3))
+
+        if selected_system_sidebar == "All":
+            stacked = df_filtered.groupby(
+                ["systemName", "status_viz"]
+            ).size().unstack(fill_value=0)
+
+            bottom = None
+
+            for status in stacked.columns:
+                bars = ax1.bar(
+                    stacked.index,
+                    stacked[status],
+                    bottom=bottom,
+                    label=status
+                )
+
+                for bar in bars:
+                    height = bar.get_height()
+                    if height > 0:
+                        ax1.text(
+                            bar.get_x() + bar.get_width()/2,
+                            bar.get_y() + height - 0.1,
+                            int(height),
+                            ha="center",
+                            va="top",
+                            fontsize=8
+                        )
+
+                if bottom is None:
+                    bottom = stacked[status].values
+                else:
+                    bottom = bottom + stacked[status].values
+
+            ax1.legend(ncol=len(stacked.columns))
+
+        else:
+            bars = ax1.bar(status_counts.index, status_counts.values)
 
             for bar in bars:
                 height = bar.get_height()
-                if height > 0:
-                    ax1.text(
-                        bar.get_x() + bar.get_width()/2,
-                        bar.get_y() + height - 0.1,
-                        int(height),
-                        ha="center",
-                        va="top",
-                        fontsize=8
-                    )
+                ax1.text(
+                    bar.get_x() + bar.get_width()/2,
+                    height - 0.1,
+                    int(height),
+                    ha="center",
+                    va="top",
+                    fontsize=8
+                )
 
-            if bottom is None:
-                bottom = stacked[status].values
-            else:
-                bottom = bottom + stacked[status].values
+        ax1.spines['top'].set_visible(False)
+        ax1.spines['right'].set_visible(False)
+        ax1.spines['left'].set_visible(False)
 
-        ax1.legend(ncol=len(stacked.columns))
+        st.pyplot(fig1)
 
-    else:
-        # NORMAL BAR
-        bars = ax1.bar(status_counts.index, status_counts.values)
-
-        for bar in bars:
-            height = bar.get_height()
-            ax1.text(
-                bar.get_x() + bar.get_width()/2,
-                height - 0.1,
-                int(height),
-                ha="center",
-                va="top",
-                fontsize=8
-            )
-
-    ax1.spines['top'].set_visible(False)
-    ax1.spines['right'].set_visible(False)
-    ax1.spines['left'].set_visible(False)
-
-    st.pyplot(fig1)
-
-    st.dataframe(df_view.head(20), use_container_width=True)
+        st.dataframe(df_filtered.head(20), use_container_width=True)
 
     # ==========================================================
-    # ===================== TABS SECTION =======================
+    # TAB 2 - ALERT MANAGEMENT (PLACEHOLDER)
     # ==========================================================
-
-    st.markdown("---")
-    st.header("Advanced Alert Section")
-
-    tab1, tab2 = st.tabs(["Alert Management", "Alert Statistics"])
-
-    # ==========================================================
-    # TAB 1 - PLACEHOLDER
-    # ==========================================================
-    with tab1:
+    with tab2:
         st.info("Alert Management section will be implemented later.")
 
     # ==========================================================
-    # TAB 2 - ALERT STATISTICS (MONTH ONLY)
+    # TAB 3 - ALERT STATISTICS (MONTH FILTER ONLY)
     # ==========================================================
-    with tab2:
+    with tab3:
 
         df["month_year"] = df["deviationTime"].dt.strftime("%B %Y")
         months = sorted(df["month_year"].unique())
+
         selected_month = st.selectbox("Select Month", months)
 
         df_month = df[df["month_year"] == selected_month].copy()
@@ -157,9 +184,11 @@ if uploaded_file is not None:
         # =====================================================
         st.markdown("### Active Alerts by Role")
 
-        df_active = df_month[df_month["status_viz"].isin(
-            ["Pending", "Work In Progress", "Overdue"]
-        )]
+        df_active = df_month[
+            df_month["status_viz"].isin(
+                ["Pending", "Work In Progress", "Overdue"]
+            )
+        ]
 
         role_counts = df_active["currentAssignee"].value_counts()
 
@@ -190,7 +219,9 @@ if uploaded_file is not None:
         # =====================================================
         st.markdown("### Monthly Utilization Report")
 
-        system_group = df_month.groupby(["systemName", "status_viz"]).size().unstack(fill_value=0)
+        system_group = df_month.groupby(
+            ["systemName", "status_viz"]
+        ).size().unstack(fill_value=0)
 
         fig3, ax3 = plt.subplots(figsize=(7, 3))
 
@@ -229,11 +260,11 @@ if uploaded_file is not None:
         plt.xticks(rotation=45)
         st.pyplot(fig3)
 
-        # =====================================================
-        # UTILIZATION RATE
-        # =====================================================
+        # Utilization Rate
         if total_generated > 0:
-            utilization_rate = round((total_closed / total_generated) * 100, 2)
+            utilization_rate = round(
+                (total_closed / total_generated) * 100, 2
+            )
         else:
             utilization_rate = 0
 
