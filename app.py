@@ -19,7 +19,7 @@ if uploaded_file is not None:
 
     df["deviationTime"] = pd.to_datetime(df["deviationTime"])
 
-    # Remove all Closed variants for charts (Closed, Closed (Implemented), Closed(System), etc.)
+    # Remove all Closed variants for charts
     df_active = df[~df["status"].str.lower().str.contains("closed", na=False)]
 
     # ================= Sidebar =================
@@ -74,11 +74,27 @@ if uploaded_file is not None:
         st.subheader("Active Alerts Overview")
 
         if affiliate_selected == "All":
+
+            all_affiliates = sorted(df_filtered["systemName"].unique())
+            active_statuses = sorted(df_active_filtered["status"].unique())
+
             chart_df = (
                 df_active_filtered
                 .groupby(["systemName", "status"])
                 .size()
                 .reset_index(name="Count")
+            )
+
+            complete_index = pd.MultiIndex.from_product(
+                [all_affiliates, active_statuses],
+                names=["systemName", "status"]
+            )
+
+            chart_df = (
+                chart_df
+                .set_index(["systemName", "status"])
+                .reindex(complete_index, fill_value=0)
+                .reset_index()
             )
 
             fig = px.bar(
@@ -89,6 +105,7 @@ if uploaded_file is not None:
                 barmode="stack",
                 text="Count"
             )
+
             fig.update_layout(xaxis_title="", yaxis_title="Active Alerts")
             st.plotly_chart(fig, use_container_width=True)
 
@@ -106,6 +123,7 @@ if uploaded_file is not None:
                 y="Count",
                 text="Count"
             )
+
             fig.update_layout(xaxis_title="", yaxis_title="Active Alerts")
             st.plotly_chart(fig, use_container_width=True)
 
