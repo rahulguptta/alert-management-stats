@@ -173,20 +173,24 @@ if uploaded_file is not None:
             st.stop()
     
         # ================= MONTH FILTER =================
-        df_filtered["YearMonth"] = df_filtered["deviationTime"].dt.to_period("M").astype(str)
-        months = sorted(df_filtered["YearMonth"].unique().tolist())
-        month_options = ["All"] + months
-    
+        # ================= MONTH FILTER =================
+        df_filtered["MonthDisplay"] = df_filtered["deviationTime"].dt.strftime("%B %Y")
+        df_filtered["MonthSort"] = df_filtered["deviationTime"].dt.to_period("M")
+        
+        month_df = (
+            df_filtered[["MonthDisplay", "MonthSort"]]
+            .drop_duplicates()
+            .sort_values("MonthSort")
+        )
+        
+        month_options = ["All"] + month_df["MonthDisplay"].tolist()
+        
         selected_month = st.selectbox("Select Month", month_options, index=0)
-    
+        
         if selected_month == "All":
             df_month = df_filtered.copy()
         else:
-            df_month = df_filtered[df_filtered["YearMonth"] == selected_month]
-    
-        if df_month.empty:
-            st.warning("No data for selected month.")
-            st.stop()
+            df_month = df_filtered[df_filtered["MonthDisplay"] == selected_month]
     
         # ================= STATUS CLASSIFICATION =================
         status_lower = df_month["status"].str.lower()
