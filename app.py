@@ -284,6 +284,107 @@ if uploaded_file is not None:
             st.info("No active alerts in selected month.")
 
     # ================= Alert Management =================
+    # ================= Alert Management =================
     with tab3:
+    
         st.subheader("Alert Management")
-        st.info("Alert Management module coming soon.")
+    
+        # -------- Required Columns Check --------
+        required_mgmt_cols = ["causeMessage", "odsCauseTagName", "requestID", "comments", "status"]
+        for col in required_mgmt_cols:
+            if col not in df_filtered.columns:
+                st.error(f"Missing required column for Alert Management: {col}")
+                st.stop()
+    
+        # ================= FILTER DROPDOWNS =================
+    
+        col1, col2 = st.columns(2)
+    
+        # Category Dropdown
+        category_selected = col1.selectbox(
+            "Category",
+            ["All", "Energy", "Production", "Environment"],
+            index=0
+        )
+    
+        # Deviation Dropdown
+        deviation_selected = col2.selectbox(
+            "Deviation",
+            ["All", "Pending"],
+            index=0
+        )
+    
+        df_mgmt = df_filtered.copy()
+    
+        # ================= CATEGORY FILTER =================
+        if category_selected == "Energy":
+            df_mgmt = df_mgmt[
+                df_mgmt["odsCauseTagName"].str.contains("energy", case=False, na=False)
+            ]
+    
+        elif category_selected == "Production":
+            production_keywords = [
+                "production", "throughput", "capacity",
+                "rate", "yield", "output"
+            ]
+            df_mgmt = df_mgmt[
+                df_mgmt["odsCauseTagName"].str.contains(
+                    "|".join(production_keywords), case=False, na=False
+                )
+            ]
+    
+        elif category_selected == "Environment":
+            env_keywords = [
+                "emission", "co2", "environment",
+                "flaring", "waste", "pollution"
+            ]
+            df_mgmt = df_mgmt[
+                df_mgmt["odsCauseTagName"].str.contains(
+                    "|".join(env_keywords), case=False, na=False
+                )
+            ]
+    
+        # ================= DEVIATION FILTER =================
+        if deviation_selected == "Pending":
+            df_mgmt = df_mgmt[
+                df_mgmt["status"].str.contains("pending", case=False, na=False)
+            ]
+    
+        if df_mgmt.empty:
+            st.warning("No alerts found for selected filters.")
+            st.stop()
+    
+        # ================= DISPLAY TABLE =================
+    
+        for idx, row in df_mgmt.iterrows():
+    
+            with st.container():
+    
+                col1, col2, col3, col4, col5, col6 = st.columns([2, 2, 1, 1, 1, 1])
+    
+                # Cause (System)
+                cause_text = f"{row['causeMessage']} ({row['systemName']})"
+                col1.markdown(f"**Cause (System)**  \n{cause_text}")
+    
+                # KPI (with Request ID)
+                kpi_text = f"{row['odsCauseTagName']}  \n(Request ID: {row['requestID']})"
+                col2.markdown(f"**KPI**  \n{kpi_text}")
+    
+                # Current Assignee
+                col3.markdown(f"**Current Assignee**  \n{row['currentAssignee']}")
+    
+                # Due Date (Blank for now)
+                col4.markdown("**Due Date**  \n-")
+    
+                # Action Status
+                col5.markdown(f"**Action Status**  \n{row['status']}")
+    
+                # Action (Comments Expander)
+                with col6:
+                    with st.expander("View Comments"):
+                        if pd.isna(row["comments"]) or row["comments"] == "":
+                            st.write("No comments available.")
+                        else:
+                            st.write(row["comments"])
+    
+                st.markdown("---")
