@@ -19,8 +19,8 @@ if uploaded_file is not None:
 
     df["deviationTime"] = pd.to_datetime(df["deviationTime"])
 
-    # Remove Closed from charts (keep only active alerts)
-    df_active = df[df["status"].str.lower() != "closed"]
+    # Remove all Closed variants for charts (Closed, Closed (Implemented), Closed(System), etc.)
+    df_active = df[~df["status"].str.lower().str.contains("closed", na=False)]
 
     # ================= Sidebar =================
     st.sidebar.header("Filters")
