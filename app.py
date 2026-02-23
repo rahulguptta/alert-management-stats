@@ -5,11 +5,14 @@ import plotly.express as px
 st.set_page_config(layout="wide")
 st.title("Alert Dashboard")
 
+# ================= SESSION STATE INIT =================
+if "people_roles" not in st.session_state:
+    st.session_state["people_roles"] = {}
+
 uploaded_file = st.file_uploader("Upload Excel File", type=["xlsx"])
 
 if uploaded_file is not None:
 
-    # ================= READ FILE =================
     # ================= READ FILE =================
     df_raw = pd.read_excel(uploaded_file, header=None)
     
@@ -60,6 +63,11 @@ if uploaded_file is not None:
     # ================= REMOVE CLOSED FOR CHARTS =================
     df_active = df[~df["status"].str.lower().str.contains("closed", na=False)]
 
+    # ================= COLLECT ALL EXISTING PEOPLE =================
+    existing_assignees = set(df["currentAssignee"].dropna().unique().tolist())
+    existing_last_action = set(df["lastActionTakenBy"].dropna().unique().tolist())
+    all_existing_people = sorted(existing_assignees.union(existing_last_action))
+
     # ================= SIDEBAR =================
     st.sidebar.header("Filters")
 
@@ -99,8 +107,8 @@ if uploaded_file is not None:
         ]
 
     # ================= TABS =================
-    tab1, tab2, tab3 = st.tabs(
-        ["Overview", "Alert Statistics", "Alert Management"]
+    tab1, tab2, tab3, tab4 = st.tabs(
+        ["Overview", "Alert Statistics", "Alert Management", "Admin Controlled"]
     )
 
     # ================= OVERVIEW =================
@@ -138,7 +146,6 @@ if uploaded_file is not None:
         st.dataframe(overall_stats, use_container_width=True)
 
     # ================= ALERT STATISTICS =================
-    # ================= Alert Statistics =================
     with tab2:
 
         st.subheader("Alert Statistics")
@@ -182,13 +189,11 @@ if uploaded_file is not None:
     
         auto_closed = df_month[df_month["status"].str.contains("System", case=False, na=False)].shape[0]
     
-        # Overdue > 3 days logic (based on deviationTime vs today)
         overdue_3 = df_month[
             (status_lower.str.contains("overdue", na=False)) &
             ((pd.Timestamp.today() - df_month["deviationTime"]).dt.days > 3)
         ].shape[0]
     
-        # Placeholder logic
         target_revision = total_active
     
         # ================= KPI LAYOUT =================
@@ -222,15 +227,18 @@ if uploaded_file is not None:
     
         df_active_month = df_month[~status_lower.str.contains("closed", na=False)]
     
-        role_mapping = {
+        tab2_role_mapping = {
             'James Anderson': 'Process Engineer',
             'Ahmed El-Sayed': 'Process Manager',
             'Chen Wei': 'Operation Engineer',
             'Lucas Silva': 'Operation Manager',
             'Arjun Mehta': 'Operation Engineer'
         }
-    
-        df_active_month["Role"] = df_active_month["currentAssignee"].map(role_mapping)
+
+        # Merge session state roles into tab2 role mapping
+        tab2_role_mapping.update(st.session_state["people_roles"])
+
+        df_active_month["Role"] = df_active_month["currentAssignee"].map(tab2_role_mapping)
         df_active_month["Role"] = df_active_month["Role"].fillna("Other")
     
         role_df = (
@@ -257,7 +265,7 @@ if uploaded_file is not None:
         else:
             st.info("No active alerts in selected month.")
 
-    # ================= Alert Management =================
+    # ================= ALERT MANAGEMENT =================
     with tab3:
     
         st.subheader("Alert Management")
@@ -266,44 +274,35 @@ if uploaded_file is not None:
             st.warning("No data available for selected filters.")
             st.stop()
     
-        # ================= FILTER ROW =================
         col1, col2 = st.columns(2)
     
-        # -------- Category Filter --------
         category_options = ["All", "Energy", "Production", "Environment"]
         selected_category = col1.selectbox("Category", category_options)
     
-        # -------- Deviation Filter --------
         deviation_options = ["All", "Pending"]
         selected_deviation = col2.selectbox("Deviation", deviation_options)
     
         df_mgmt = df_filtered.copy()
     
-        # ================= CATEGORY LOGIC =================
         if selected_category == "Energy":
             df_mgmt = df_mgmt[
                 df_mgmt["odsCauseTagName"].str.contains("energy", case=False, na=False)
             ]
-    
         elif selected_category == "Production":
             df_mgmt = df_mgmt[
                 df_mgmt["odsCauseTagName"].str.contains(
                     "production|throughput|rate|capacity|output",
-                    case=False,
-                    na=False
+                    case=False, na=False
                 )
             ]
-    
         elif selected_category == "Environment":
             df_mgmt = df_mgmt[
                 df_mgmt["odsCauseTagName"].str.contains(
                     "environment|emission|flare|co2|pollution",
-                    case=False,
-                    na=False
+                    case=False, na=False
                 )
             ]
     
-        # ================= DEVIATION LOGIC =================
         if selected_deviation == "Pending":
             df_mgmt = df_mgmt[
                 df_mgmt["status"].str.contains("pending", case=False, na=False)
@@ -313,19 +312,72 @@ if uploaded_file is not None:
             st.info("No records found.")
             st.stop()
     
-        # ================= TABLE STRUCTURE =================
         display_df = pd.DataFrame({
             "Alert ID": df_mgmt["requestID"],
             "Category": df_mgmt["odsCauseTagName"],
             "Cause (System)": df_mgmt["causeMessage"].fillna("") + " | " + df_mgmt["systemName"].fillna(""),
             "KPI": df_mgmt["odsCauseTagName"],
             "Deviation": df_mgmt["status"],
-            "Due Date": "",  # Blank as requested
+            "Due Date": "",
             "Comments": df_mgmt["comments"].fillna("")
         })
     
-        # Reset index for clean display
         display_df = display_df.reset_index(drop=True)
-    
-        # ================= DISPLAY TABLE =================
         st.dataframe(display_df, use_container_width=True)
+
+    # ================= ADMIN CONTROLLED =================
+    with tab4:
+
+        st.subheader("Admin Controlled — Member Management")
+
+        DEFAULT_ROLES = [
+            "Process Engineer",
+            "Process Manager",
+            "Operation Engineer",
+            "Operation Manager"
+        ]
+
+        # All people = from data + any added via session
+        all_people_for_admin = sorted(
+            set(all_existing_people) | set(st.session_state["people_roles"].keys())
+        )
+
+        person_options = ["Add New Member"] + all_people_for_admin
+
+        selected_person = st.selectbox("Select Member", person_options)
+
+        if selected_person == "Add New Member":
+            new_name = st.text_input("Enter Full Name")
+            new_role = st.selectbox("Assign Role", DEFAULT_ROLES)
+
+            if st.button("Add Member"):
+                if new_name.strip() == "":
+                    st.warning("Please enter a valid name.")
+                elif new_name.strip() in all_people_for_admin:
+                    st.warning(f"'{new_name.strip()}' already exists. Select them from the dropdown to change their role.")
+                else:
+                    st.session_state["people_roles"][new_name.strip()] = new_role
+                    st.success(f"'{new_name.strip()}' added as '{new_role}'.")
+
+        else:
+            current_role = st.session_state["people_roles"].get(selected_person, "Not Assigned")
+            st.info(f"Current Role: **{current_role}**")
+
+            updated_role = st.selectbox("Change Role To", DEFAULT_ROLES)
+
+            if st.button("Update Role"):
+                st.session_state["people_roles"][selected_person] = updated_role
+                st.success(f"Role of '{selected_person}' updated to '{updated_role}'.")
+
+        # ================= CURRENT MEMBERS TABLE =================
+        st.markdown("---")
+        st.markdown("### Current Member Registry")
+
+        if st.session_state["people_roles"]:
+            registry_df = pd.DataFrame(
+                list(st.session_state["people_roles"].items()),
+                columns=["Name", "Role"]
+            )
+            st.dataframe(registry_df, use_container_width=True)
+        else:
+            st.info("No members added or modified yet in this session.")
