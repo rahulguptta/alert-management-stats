@@ -1,9 +1,17 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+from io import BytesIO
 
 st.set_page_config(layout="wide")
 st.title("Alert Dashboard")
+
+# ================= SESSION STATE INIT (outside file block) =================
+if "people_roles" not in st.session_state:
+    st.session_state["people_roles"] = {}
+
+if "roles_initialized" not in st.session_state:
+    st.session_state["roles_initialized"] = False
 
 uploaded_file = st.file_uploader("Upload Excel File", type=["xlsx"])
 
@@ -12,16 +20,9 @@ if uploaded_file is not None:
     # ================= READ FILE =================
     df_raw = pd.read_excel(uploaded_file, header=None)
 
-    # Remove first row
     df_raw = df_raw.iloc[1:].reset_index(drop=True)
-
-    # Second row becomes header
     df_raw.columns = df_raw.iloc[0]
-
-    # Remove that header row from data
     df = df_raw.iloc[1:].reset_index(drop=True)
-
-    # Clean column names
     df.columns = df.columns.astype(str).str.strip()
 
     # ================= SYSTEM NAME MAPPING =================
@@ -46,30 +47,31 @@ if uploaded_file is not None:
     # ================= DATETIME CONVERSION =================
     df["deviationTime"] = pd.to_datetime(df["deviationTime"], errors="coerce")
 
-    # ================= SESSION STATE INIT (after assignee mapping) =================
-    if "people_roles" not in st.session_state:
+    # ================= INIT DEFAULT ROLES ONCE AFTER MAPPING =================
+    if not st.session_state["roles_initialized"]:
         st.session_state["people_roles"] = {
             'Parvaze Aalam': 'Process Engineer',
             'Ashawani Arora': 'Process Manager',
             'John Doe Paul': 'Operation Engineer',
             'Rashmina Raj Kumari': 'Operation Manager'
         }
+        st.session_state["roles_initialized"] = True
+
+    # ================= APPLY ROLE COLUMN TO FULL DATAFRAME =================
+    df["Role"] = df["currentAssignee"].map(
+        st.session_state["people_roles"]
+    ).fillna("Other")
+
+    # ================= REMOVE CLOSED FOR CHARTS =================
+    df_active = df[~df["status"].str.lower().str.contains("closed", na=False)]
 
     # ================= COLLECT ALL EXISTING PEOPLE FROM DATA =================
     existing_assignees = set(df["currentAssignee"].dropna().unique().tolist())
     existing_last_action = set(df["lastActionTakenBy"].dropna().unique().tolist())
-    all_existing_people = sorted(existing_assignees.union(existing_last_action))
-
-    # Add any people from session state not yet in data
-    for person in st.session_state["people_roles"]:
-        if person not in all_existing_people:
-            all_existing_people = sorted(set(all_existing_people) | {person})
-
-    # ================= APPLY ROLE COLUMN TO FULL DATAFRAME =================
-    df["Role"] = df["currentAssignee"].map(st.session_state["people_roles"]).fillna("Other")
-
-    # ================= REMOVE CLOSED FOR CHARTS =================
-    df_active = df[~df["status"].str.lower().str.contains("closed", na=False)]
+    all_existing_people = sorted(
+        existing_assignees.union(existing_last_action) |
+        set(st.session_state["people_roles"].keys())
+    )
 
     # ================= SIDEBAR =================
     st.sidebar.header("Filters")
@@ -97,9 +99,7 @@ if uploaded_file is not None:
     st.sidebar.markdown("---")
     st.sidebar.markdown("### Download")
 
-    @st.cache_data
     def convert_df_to_excel(dataframe):
-        from io import BytesIO
         output = BytesIO()
         with pd.ExcelWriter(output, engine="openpyxl") as writer:
             dataframe.to_excel(writer, index=False, sheet_name="Updated Data")
@@ -190,7 +190,6 @@ if uploaded_file is not None:
         )
 
         month_options = ["All"] + month_df["MonthDisplay"].tolist()
-
         selected_month = st.selectbox("Select Month", month_options, index=0)
 
         if selected_month == "All":
@@ -211,7 +210,9 @@ if uploaded_file is not None:
         wip = df_month[status_lower.str.contains("progress", na=False)].shape[0]
         overdue = df_month[status_lower.str.contains("overdue", na=False)].shape[0]
 
-        auto_closed = df_month[df_month["status"].str.contains("System", case=False, na=False)].shape[0]
+        auto_closed = df_month[
+            df_month["status"].str.contains("System", case=False, na=False)
+        ].shape[0]
 
         overdue_3 = df_month[
             (status_lower.str.contains("overdue", na=False)) &
@@ -249,9 +250,10 @@ if uploaded_file is not None:
         # ================= ACTIVE ALERTS BY ROLE =================
         st.markdown("### Active Alerts by Role")
 
-        df_active_month = df_month[~status_lower.str.contains("closed", na=False)].copy()
+        df_active_month = df_month[
+            ~status_lower.str.contains("closed", na=False)
+        ].copy()
 
-        # Role already applied to df, so use it directly
         role_df = (
             df_active_month
             .groupby("Role")
@@ -380,10 +382,6 @@ if uploaded_file is not None:
 
             if st.button("Update Role"):
                 st.session_state["people_roles"][selected_person] = updated_role
-                # Update Role column in df immediately
-                df["Role"] = df["currentAssignee"].map(
-                    st.session_state["people_roles"]
-                ).fillna("Other")
                 st.success(f"Role of '{selected_person}' updated to '{updated_role}'.")
                 st.rerun()
 
