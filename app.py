@@ -9,34 +9,35 @@ uploaded_file = st.file_uploader("Upload Excel File", type=["xlsx"])
 
 if uploaded_file is not None:
 
-    # ================= INITIAL DATA MANIPULATION =================
-    df = pd.read_excel(uploaded_file, header=None)
+    # ================= READ FILE =================
+    df = pd.read_excel(uploaded_file)
 
     # Remove first row and use second row as header
-    df.columns = df.iloc[1]
-    df = df[2:].reset_index(drop=True)
-    df.columns = df.columns.astype(str).str.strip()
+    df = df.iloc[1:].reset_index(drop=True)
+    df.columns = df.iloc[0]
+    df = df[1:].reset_index(drop=True)
+    df.columns = df.columns.str.strip()
 
-    # -------- systemName Mapping --------
+    # ================= SYSTEM NAME MAPPING =================
     system_mapping = {
         "COLD SECTIONS COLUMNS": "Column Section",
         "QUENCH SYSTEM": "Quench Tower",
         "CHARGE GAS COMPRESSOR": "CGC Section",
-        "ACETYLENE REACTORS OPTIMIZATION": "Acetylene Reactors",
+        "ACETYLENE REACTORS OPTIMIZATION": "Acetylene Reactors"
     }
     df["systemName"] = df["systemName"].replace(system_mapping)
 
-    # -------- Assignee Mapping --------
+    # ================= ASSIGNEE MAPPING =================
     assignee_mapping = {
         "PAVLOV ANDRES ROMERO PEREZ": "Parvaze Aalam",
         "Ahmed Hassan Ahmed Faqqas": "Ashawani Arora",
         "Omer Ali Abdullah AlAli": "John Doe Paul",
-        "Talaal Salah Abdullah Alabdulkareem": "Rashmina Raj Kumari",
+        "Talaal Salah Abdullah Alabdulkareem": "Rashmina Raj Kumari"
     }
     df["currentAssignee"] = df["currentAssignee"].replace(assignee_mapping)
     df["lastActionTakenBy"] = df["lastActionTakenBy"].replace(assignee_mapping)
 
-    # -------- Role Creation from stageID --------
+    # ================= ROLE CREATION FROM stageID =================
     role_mapping = {
         1: "Process Engineer",
         2: "Process Manager",
@@ -46,13 +47,13 @@ if uploaded_file is not None:
     df["stageID"] = pd.to_numeric(df["stageID"], errors="coerce")
     df["Role"] = df["stageID"].map(role_mapping)
 
-     # Convert datetime
+    # ================= DATETIME CONVERSION =================
     df["deviationTime"] = pd.to_datetime(df["deviationTime"], errors="coerce")
 
-    # Remove closed alerts for charts
+    # ================= REMOVE CLOSED FOR CHARTS =================
     df_active = df[~df["status"].str.lower().str.contains("closed", na=False)]
 
-    # ================= Sidebar Filters =================
+    # ================= SIDEBAR =================
     st.sidebar.header("Filters")
 
     min_date = df["deviationTime"].min()
@@ -65,19 +66,15 @@ if uploaded_file is not None:
         max_value=max_date,
     )
 
-    if isinstance(period, tuple):
-        start_date, end_date = period
-    else:
-        start_date, end_date = min_date, max_date
+    start_date, end_date = period
 
     affiliates = sorted(df["systemName"].dropna().unique())
     affiliate_selected = st.sidebar.selectbox(
         "Select Affiliate",
-        ["All"] + affiliates,
-        index=0,
+        ["All"] + list(affiliates),
+        index=0
     )
 
-    # Apply period filter
     df_filtered = df[
         (df["deviationTime"] >= pd.to_datetime(start_date)) &
         (df["deviationTime"] <= pd.to_datetime(end_date))
@@ -88,14 +85,13 @@ if uploaded_file is not None:
         (df_active["deviationTime"] <= pd.to_datetime(end_date))
     ]
 
-    # Apply affiliate filter
     if affiliate_selected != "All":
         df_filtered = df_filtered[df_filtered["systemName"] == affiliate_selected]
         df_active_filtered = df_active_filtered[
             df_active_filtered["systemName"] == affiliate_selected
         ]
 
-    # ================= Tabs =================
+    # ================= TABS =================
     tab1, tab2, tab3 = st.tabs(
         ["Overview", "Alert Statistics", "Alert Management"]
     )
@@ -105,89 +101,61 @@ if uploaded_file is not None:
 
         st.subheader("Active Alerts Overview")
 
-        if affiliate_selected == "All":
+        chart_df = (
+            df_active_filtered
+            .groupby(["systemName", "status"])
+            .size()
+            .reset_index(name="Count")
+        )
 
-            all_affiliates = sorted(df_filtered["systemName"].unique())
-            active_statuses = sorted(df_active_filtered["status"].unique())
+        fig = px.bar(
+            chart_df,
+            x="systemName",
+            y="Count",
+            color="status",
+            barmode="stack",
+            text="Count"
+        )
 
-            chart_df = (
-                df_active_filtered
-                .groupby(["systemName", "status"])
-                .size()
-                .reset_index(name="Count")
-            )
-
-            if len(active_statuses) > 0:
-                complete_index = pd.MultiIndex.from_product(
-                    [all_affiliates, active_statuses],
-                    names=["systemName", "status"]
-                )
-                chart_df = (
-                    chart_df.set_index(["systemName", "status"])
-                    .reindex(complete_index, fill_value=0)
-                    .reset_index()
-                )
-
-            fig = px.bar(
-                chart_df,
-                x="systemName",
-                y="Count",
-                color="status",
-                barmode="stack",
-                text="Count"
-            )
-            fig.update_layout(xaxis_title="", yaxis_title="Active Alerts")
-            st.plotly_chart(fig, use_container_width=True)
-
-        else:
-            chart_df = (
-                df_active_filtered
-                .groupby("status")
-                .size()
-                .reset_index(name="Count")
-            )
-
-            fig = px.bar(
-                chart_df,
-                x="status",
-                y="Count",
-                text="Count"
-            )
-            fig.update_layout(xaxis_title="", yaxis_title="Active Alerts")
-            st.plotly_chart(fig, use_container_width=True)
+        fig.update_layout(xaxis_title="", yaxis_title="Active Alerts")
+        st.plotly_chart(fig, use_container_width=True)
 
         st.markdown("### Overall Status Statistics")
-        overall_stats = df_filtered["status"].value_counts().reset_index()
+
+        overall_stats = (
+            df_filtered["status"]
+            .value_counts()
+            .reset_index()
+        )
         overall_stats.columns = ["Status", "Count"]
         st.dataframe(overall_stats, use_container_width=True)
-
-        if affiliate_selected == "All":
-            st.markdown("### Status by Affiliate")
-            affiliate_stats = (
-                df_filtered.groupby(["systemName", "status"])
-                .size()
-                .reset_index(name="Count")
-            )
-            pivot_table = affiliate_stats.pivot(
-                index="systemName",
-                columns="status",
-                values="Count"
-            ).fillna(0)
-            st.dataframe(pivot_table, use_container_width=True)
 
     # ================= ALERT STATISTICS =================
     with tab2:
 
         st.subheader("Alert Statistics")
 
-        if df_filtered.empty:
-            st.warning("No data available for selected filters.")
-            st.stop()
+        df_filtered["MonthDisplay"] = df_filtered["deviationTime"].dt.strftime("%B %Y")
+        df_filtered["MonthSort"] = df_filtered["deviationTime"].dt.to_period("M")
 
-        total_generated = len(df_filtered)
-        total_closed = df_filtered[
-            df_filtered["status"].str.lower().str.contains("closed", na=False)
-        ].shape[0]
+        month_df = (
+            df_filtered[["MonthDisplay", "MonthSort"]]
+            .drop_duplicates()
+            .sort_values("MonthSort")
+        )
+
+        month_options = ["All"] + month_df["MonthDisplay"].tolist()
+        selected_month = st.selectbox("Select Month", month_options, index=0)
+
+        if selected_month == "All":
+            df_month = df_filtered.copy()
+        else:
+            df_month = df_filtered[df_filtered["MonthDisplay"] == selected_month]
+
+        status_lower = df_month["status"].str.lower()
+
+        total_generated = len(df_month)
+        total_closed = df_month[status_lower.str.contains("closed", na=False)].shape[0]
         total_active = total_generated - total_closed
 
         col1, col2, col3 = st.columns(3)
@@ -196,111 +164,96 @@ if uploaded_file is not None:
         col3.metric("Total Closed", total_closed)
 
         st.markdown("---")
+
         st.markdown("### Active Alerts by Role")
 
-        df_active_month = df_filtered[
-            ~df_filtered["status"].str.lower().str.contains("closed", na=False)
-        ]
+        df_active_month = df_month[~status_lower.str.contains("closed", na=False)]
 
         role_df = (
-            df_active_month.groupby("Role")
+            df_active_month
+            .groupby("Role")
             .size()
             .reset_index(name="Count")
             .sort_values("Count", ascending=False)
         )
 
-        if not role_df.empty:
-            fig_role = px.bar(
-                role_df,
-                x="Role",
-                y="Count",
-                text="Count"
-            )
-            fig_role.update_layout(xaxis=dict(type="category"))
-            st.plotly_chart(fig_role, use_container_width=True)
-        else:
-            st.info("No active alerts available.")
+        fig_role = px.bar(
+            role_df,
+            x="Role",
+            y="Count",
+            text="Count"
+        )
+        fig_role.update_layout(
+            xaxis_title="Role",
+            yaxis_title="Active Alerts",
+            xaxis=dict(type="category")
+        )
+        st.plotly_chart(fig_role, use_container_width=True)
 
     # ================= ALERT MANAGEMENT =================
     with tab3:
 
         st.subheader("Alert Management")
 
-        col1, col2 = st.columns(2)
+        category = st.selectbox(
+            "Category",
+            ["All", "Energy", "Production", "Environment"]
+        )
 
-        with col1:
-            category = st.selectbox(
-                "Category",
-                ["All", "Energy", "Production", "Environment"]
-            )
+        deviation = st.selectbox(
+            "Deviation",
+            ["All", "Pending"]
+        )
 
-        with col2:
-            deviation = st.selectbox(
-                "Deviation",
-                ["All", "Pending"]
-            )
-
-        df_mgmt = df_filtered.copy()
+        df_manage = df_filtered.copy()
 
         if category == "Energy":
-            df_mgmt = df_mgmt[
-                df_mgmt["odsCauseTagName"].str.contains("energy", case=False, na=False)
+            df_manage = df_manage[
+                df_manage["odsCauseTagName"].str.contains("energy", case=False, na=False)
             ]
-
         elif category == "Production":
-            df_mgmt = df_mgmt[
-                df_mgmt["odsCauseTagName"].str.contains(
-                    "production|pressure|flow|temperature|stage",
+            df_manage = df_manage[
+                df_manage["odsCauseTagName"].str.contains(
+                    "production|output|throughput|rate",
                     case=False,
                     na=False
                 )
             ]
-
         elif category == "Environment":
-            df_mgmt = df_mgmt[
-                df_mgmt["odsCauseTagName"].str.contains(
-                    "environment|emission|co2|pollution",
+            df_manage = df_manage[
+                df_manage["odsCauseTagName"].str.contains(
+                    "environment|emission|waste|pollution",
                     case=False,
                     na=False
                 )
             ]
 
         if deviation == "Pending":
-            df_mgmt = df_mgmt[
-                df_mgmt["status"].str.contains("pending", case=False, na=False)
+            df_manage = df_manage[
+                df_manage["status"].str.contains("pending", case=False, na=False)
             ]
 
-        if df_mgmt.empty:
-            st.info("No records found.")
-        else:
-            header_cols = st.columns([3, 2, 2, 1.5, 1.5, 1])
-            header_cols[0].markdown("**Cause (System)**")
-            header_cols[1].markdown("**KPI (Alert ID)**")
-            header_cols[2].markdown("**Assignee**")
-            header_cols[3].markdown("**Due Date**")
-            header_cols[4].markdown("**Status**")
-            header_cols[5].markdown("**Comments**")
+        display_cols = [
+            "requestID",
+            "systemName",
+            "causeMessage",
+            "odsCauseTagName",
+            "status"
+        ]
 
-            st.markdown("---")
+        df_display = df_manage[display_cols].copy()
+        df_display.columns = [
+            "Alert ID",
+            "System",
+            "Cause",
+            "KPI (Request ID)",
+            "Status"
+        ]
 
-            for _, row in df_mgmt.iterrows():
+        st.dataframe(df_display, use_container_width=True)
 
-                cols = st.columns([3, 2, 2, 1.5, 1.5, 1])
+        st.markdown("### Comments")
 
-                cols[0].markdown(
-                    f"{row['causeMessage']}  \n({row['systemName']})"
-                )
-
-                cols[1].markdown(
-                    f"{row['odsCauseTagName']}  \n(Alert ID: {row['requestID']})"
-                )
-
-                cols[2].write(row["currentAssignee"])
-                cols[3].write("")  # Due Date blank
-                cols[4].write(row["status"])
-
-                with cols[5]:
-                    with st.expander("View Comments"):
-                        st.write(row["comments"])
-
-                st.markdown("---")
+        for _, row in df_manage.iterrows():
+            with st.expander(f"View Comments - Alert {row['requestID']}"):
+                st.write(row.get("comments", "No Comments"))
