@@ -211,17 +211,6 @@ if uploaded_file is not None:
 
         df_active_month = df_month[~status_lower.str.contains("closed", na=False)]
 
-        role_mapping_assignee = {
-            'James Anderson': 'Process Engineer',
-            'Ahmed El-Sayed': 'Process Manager',
-            'Chen Wei': 'Operation Engineer',
-            'Lucas Silva': 'Operation Manager',
-            'Arjun Mehta': 'Operation Engineer'
-        }
-
-        df_active_month["Role"] = df_active_month["currentAssignee"].map(role_mapping_assignee)
-        df_active_month["Role"] = df_active_month["Role"].fillna("Other")
-
         role_df = (
             df_active_month
             .groupby("Role")
@@ -311,72 +300,6 @@ if uploaded_file is not None:
     # ================= ALERT CONFIGURATION =================
     with tab4:
 
-        st.subheader("Add New Joinee")
-
-        if "users" not in st.session_state:
-            st.session_state.users = []
-
-        col1, col2 = st.columns(2)
-
-        new_user_name = col1.text_input("Joinee Name")
-        new_user_role = col2.selectbox(
-            "Role",
-            ["Process Engineer", "Process Manager",
-             "Operation Engineer", "Operation Manager"]
-        )
-
-        if st.button("Add Joinee"):
-            if new_user_name:
-                st.session_state.users.append(
-                    {"Name": new_user_name, "Role": new_user_role}
-                )
-                st.success("Joinee added successfully.")
-
-        st.markdown("---")
-        st.subheader("Create New Alert")
-
-        all_assignees = list(df["currentAssignee"].dropna().unique())
-        all_assignees += [u["Name"] for u in st.session_state.users]
-        all_assignees = sorted(list(set(all_assignees)))
-
-        numeric_ids = pd.to_numeric(df["requestID"], errors="coerce")
-        next_id = int(numeric_ids.max()) + 1 if not numeric_ids.isna().all() else 1
-
-        col1, col2, col3 = st.columns(3)
-
-        system_input = col1.selectbox("System", sorted(df["systemName"].dropna().unique()))
-        status_input = col2.selectbox("Status", sorted(df["status"].dropna().unique()))
-        assignee_input = col3.selectbox("Assign To", all_assignees)
-
-        stage_input = st.slider("Stage ID", 1, 4, 1)
-        deviation_input = st.date_input("Deviation Time")
-        cause_input = st.text_input("Cause")
-        comment_input = st.text_area("Comments")
-
-        if st.button("Create Alert"):
-            new_row = {
-                "requestID": next_id,
-                "systemName": system_input,
-                "status": status_input,
-                "currentAssignee": assignee_input,
-                "lastActionTakenBy": assignee_input,
-                "stageID": stage_input,
-                "Role": role_mapping_stage.get(stage_input, "Other"),
-                "deviationTime": pd.to_datetime(deviation_input),
-                "odsCauseTagName": cause_input,
-                "causeMessage": cause_input,
-                "comments": comment_input
-            }
-
-            st.session_state.master_df = pd.concat(
-                [st.session_state.master_df, pd.DataFrame([new_row])],
-                ignore_index=True
-            )
-
-            st.success(f"Alert {next_id} created successfully.")
-            st.rerun()
-
-        st.markdown("---")
         st.subheader("Modify Existing Alert")
 
         alert_ids = df["requestID"].astype(str).unique()
@@ -391,7 +314,10 @@ if uploaded_file is not None:
 
         stage_edit = st.slider("Update Stage", 1, 4, int(df.loc[alert_row_index, "stageID"]))
 
-        assignee_edit = st.selectbox("Update Assignee", all_assignees)
+        assignee_edit = st.selectbox(
+            "Update Assignee",
+            sorted(df["currentAssignee"].dropna().unique())
+        )
 
         comment_edit = st.text_area(
             "Update Comments",
@@ -399,10 +325,17 @@ if uploaded_file is not None:
         )
 
         if st.button("Update Alert"):
+
+            current_time = pd.Timestamp.now()
+
             st.session_state.master_df.loc[alert_row_index, "status"] = status_edit
             st.session_state.master_df.loc[alert_row_index, "stageID"] = stage_edit
             st.session_state.master_df.loc[alert_row_index, "currentAssignee"] = assignee_edit
             st.session_state.master_df.loc[alert_row_index, "comments"] = comment_edit
+
+            # AUTO UPDATE FIELDS
+            st.session_state.master_df.loc[alert_row_index, "lastActionTakenBy"] = assignee_edit
+            st.session_state.master_df.loc[alert_row_index, "deviationTime"] = current_time
             st.session_state.master_df.loc[alert_row_index, "Role"] = role_mapping_stage.get(stage_edit, "Other")
 
             st.success("Alert updated successfully.")
