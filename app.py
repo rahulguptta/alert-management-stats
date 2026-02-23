@@ -10,19 +10,11 @@ uploaded_file = st.file_uploader("Upload Excel File", type=["xlsx"])
 if uploaded_file is not None:
 
     # ================= READ FILE =================
-    # ================= READ FILE =================
     df_raw = pd.read_excel(uploaded_file, header=None)
-    
-    # Remove first row
+
     df_raw = df_raw.iloc[1:].reset_index(drop=True)
-    
-    # Second row becomes header
     df_raw.columns = df_raw.iloc[0]
-    
-    # Remove that header row from data
     df = df_raw.iloc[1:].reset_index(drop=True)
-    
-    # Clean column names
     df.columns = df.columns.astype(str).str.strip()
 
     # ================= SYSTEM NAME MAPPING =================
@@ -45,17 +37,23 @@ if uploaded_file is not None:
     df["lastActionTakenBy"] = df["lastActionTakenBy"].replace(assignee_mapping)
 
     # ================= ROLE CREATION FROM stageID =================
-    role_mapping = {
+    role_mapping_stage = {
         1: "Process Engineer",
         2: "Process Manager",
         3: "Operation Engineer",
         4: "Operation Engineer",
     }
     df["stageID"] = pd.to_numeric(df["stageID"], errors="coerce")
-    df["Role"] = df["stageID"].map(role_mapping)
+    df["Role"] = df["stageID"].map(role_mapping_stage)
 
     # ================= DATETIME CONVERSION =================
     df["deviationTime"] = pd.to_datetime(df["deviationTime"], errors="coerce")
+
+    # ================= SESSION MASTER DF =================
+    if "master_df" not in st.session_state:
+        st.session_state.master_df = df.copy()
+
+    df = st.session_state.master_df
 
     # ================= REMOVE CLOSED FOR CHARTS =================
     df_active = df[~df["status"].str.lower().str.contains("closed", na=False)]
@@ -99,8 +97,8 @@ if uploaded_file is not None:
         ]
 
     # ================= TABS =================
-    tab1, tab2, tab3 = st.tabs(
-        ["Overview", "Alert Statistics", "Alert Management"]
+    tab1, tab2, tab3, tab4 = st.tabs(
+        ["Overview", "Alert Statistics", "Alert Management", "Alert Configuration"]
     )
 
     # ================= OVERVIEW =================
@@ -138,101 +136,92 @@ if uploaded_file is not None:
         st.dataframe(overall_stats, use_container_width=True)
 
     # ================= ALERT STATISTICS =================
-    # ================= Alert Statistics =================
     with tab2:
 
         st.subheader("Alert Statistics")
-    
+
         if df_filtered.empty:
             st.warning("No data available for selected filters.")
             st.stop()
-    
-        # ================= MONTH FILTER =================
+
         df_filtered["MonthDisplay"] = df_filtered["deviationTime"].dt.strftime("%B %Y")
         df_filtered["MonthSort"] = df_filtered["deviationTime"].dt.to_period("M")
-        
+
         month_df = (
             df_filtered[["MonthDisplay", "MonthSort"]]
             .drop_duplicates()
             .sort_values("MonthSort")
         )
-        
+
         month_options = ["All"] + month_df["MonthDisplay"].tolist()
-        
         selected_month = st.selectbox("Select Month", month_options, index=0)
-        
+
         if selected_month == "All":
             df_month = df_filtered.copy()
         else:
             df_month = df_filtered[df_filtered["MonthDisplay"] == selected_month]
-    
-        # ================= STATUS CLASSIFICATION =================
+
         status_lower = df_month["status"].str.lower()
-    
+
         total_generated = len(df_month)
-    
         total_closed = df_month[status_lower.str.contains("closed", na=False)].shape[0]
         total_active = total_generated - total_closed
-    
+
         pending = df_month[status_lower.str.contains("pending", na=False)].shape[0]
         implemented = df_month[status_lower.str.contains("implemented", na=False)].shape[0]
         rejected = df_month[status_lower.str.contains("rejected", na=False)].shape[0]
         wip = df_month[status_lower.str.contains("progress", na=False)].shape[0]
         overdue = df_month[status_lower.str.contains("overdue", na=False)].shape[0]
-    
+
         auto_closed = df_month[df_month["status"].str.contains("System", case=False, na=False)].shape[0]
-    
-        # Overdue > 3 days logic (based on deviationTime vs today)
+
         overdue_3 = df_month[
             (status_lower.str.contains("overdue", na=False)) &
             ((pd.Timestamp.today() - df_month["deviationTime"]).dt.days > 3)
         ].shape[0]
-    
-        # Placeholder logic
+
         target_revision = total_active
-    
-        # ================= KPI LAYOUT =================
+
         col1, col2, col3 = st.columns(3)
         col1.metric("Total Generated Alerts", total_generated)
         col2.metric("Total Active", total_active)
         col3.metric("Total Closed", total_closed)
-    
+
         st.markdown("---")
-    
+
         col1, col2 = st.columns(2)
         col1.metric("Pending", pending)
         col2.metric("Implemented", implemented)
-    
+
         col1, col2 = st.columns(2)
         col1.metric("Work In Progress", wip)
         col2.metric("Rejected", rejected)
-    
+
         col1, col2 = st.columns(2)
         col1.metric("Overdue", overdue)
         col2.metric("Auto Closed", auto_closed)
-    
+
         col1, col2 = st.columns(2)
         col1.metric("No. of Overdue Alerts (>3 days)", overdue_3)
         col2.metric("Target Date Revision (Active Alerts)", target_revision)
-    
+
         st.markdown("---")
-    
-        # ================= ACTIVE ALERTS BY ROLE =================
+
         st.markdown("### Active Alerts by Role")
-    
+
         df_active_month = df_month[~status_lower.str.contains("closed", na=False)]
-    
-        role_mapping = {
+
+        role_mapping_assignee = {
             'James Anderson': 'Process Engineer',
             'Ahmed El-Sayed': 'Process Manager',
             'Chen Wei': 'Operation Engineer',
             'Lucas Silva': 'Operation Manager',
             'Arjun Mehta': 'Operation Engineer'
         }
-    
-        df_active_month["Role"] = df_active_month["currentAssignee"].map(role_mapping)
+
+        df_active_month["Role"] = df_active_month["currentAssignee"].map(role_mapping_assignee)
         df_active_month["Role"] = df_active_month["Role"].fillna("Other")
-    
+
         role_df = (
             df_active_month
             .groupby("Role")
@@ -240,7 +229,7 @@ if uploaded_file is not None:
             .reset_index(name="Count")
             .sort_values("Count", ascending=False)
         )
-    
+
         if not role_df.empty:
             fig_role = px.bar(
                 role_df,
@@ -257,34 +246,29 @@ if uploaded_file is not None:
         else:
             st.info("No active alerts in selected month.")
 
-    # ================= Alert Management =================
+    # ================= ALERT MANAGEMENT =================
     with tab3:
-    
+
         st.subheader("Alert Management")
-    
+
         if df_filtered.empty:
             st.warning("No data available for selected filters.")
             st.stop()
-    
-        # ================= FILTER ROW =================
+
         col1, col2 = st.columns(2)
-    
-        # -------- Category Filter --------
+
         category_options = ["All", "Energy", "Production", "Environment"]
         selected_category = col1.selectbox("Category", category_options)
-    
-        # -------- Deviation Filter --------
+
         deviation_options = ["All", "Pending"]
         selected_deviation = col2.selectbox("Deviation", deviation_options)
-    
+
         df_mgmt = df_filtered.copy()
-    
-        # ================= CATEGORY LOGIC =================
+
         if selected_category == "Energy":
             df_mgmt = df_mgmt[
                 df_mgmt["odsCauseTagName"].str.contains("energy", case=False, na=False)
             ]
-    
         elif selected_category == "Production":
             df_mgmt = df_mgmt[
                 df_mgmt["odsCauseTagName"].str.contains(
@@ -293,7 +277,6 @@ if uploaded_file is not None:
                     na=False
                 )
             ]
-    
         elif selected_category == "Environment":
             df_mgmt = df_mgmt[
                 df_mgmt["odsCauseTagName"].str.contains(
@@ -302,30 +285,125 @@ if uploaded_file is not None:
                     na=False
                 )
             ]
-    
-        # ================= DEVIATION LOGIC =================
+
         if selected_deviation == "Pending":
             df_mgmt = df_mgmt[
                 df_mgmt["status"].str.contains("pending", case=False, na=False)
             ]
-    
+
         if df_mgmt.empty:
             st.info("No records found.")
             st.stop()
-    
-        # ================= TABLE STRUCTURE =================
+
         display_df = pd.DataFrame({
             "Alert ID": df_mgmt["requestID"],
             "Category": df_mgmt["odsCauseTagName"],
             "Cause (System)": df_mgmt["causeMessage"].fillna("") + " | " + df_mgmt["systemName"].fillna(""),
             "KPI": df_mgmt["odsCauseTagName"],
             "Deviation": df_mgmt["status"],
-            "Due Date": "",  # Blank as requested
+            "Due Date": "",
             "Comments": df_mgmt["comments"].fillna("")
         })
-    
-        # Reset index for clean display
+
         display_df = display_df.reset_index(drop=True)
-    
-        # ================= DISPLAY TABLE =================
         st.dataframe(display_df, use_container_width=True)
+
+    # ================= ALERT CONFIGURATION =================
+    with tab4:
+
+        st.subheader("Add New Joinee")
+
+        if "users" not in st.session_state:
+            st.session_state.users = []
+
+        col1, col2 = st.columns(2)
+
+        new_user_name = col1.text_input("Joinee Name")
+        new_user_role = col2.selectbox(
+            "Role",
+            ["Process Engineer", "Process Manager",
+             "Operation Engineer", "Operation Manager"]
+        )
+
+        if st.button("Add Joinee"):
+            if new_user_name:
+                st.session_state.users.append(
+                    {"Name": new_user_name, "Role": new_user_role}
+                )
+                st.success("Joinee added successfully.")
+
+        st.markdown("---")
+        st.subheader("Create New Alert")
+
+        all_assignees = list(df["currentAssignee"].dropna().unique())
+        all_assignees += [u["Name"] for u in st.session_state.users]
+        all_assignees = sorted(list(set(all_assignees)))
+
+        numeric_ids = pd.to_numeric(df["requestID"], errors="coerce")
+        next_id = int(numeric_ids.max()) + 1 if not numeric_ids.isna().all() else 1
+
+        col1, col2, col3 = st.columns(3)
+
+        system_input = col1.selectbox("System", sorted(df["systemName"].dropna().unique()))
+        status_input = col2.selectbox("Status", sorted(df["status"].dropna().unique()))
+        assignee_input = col3.selectbox("Assign To", all_assignees)
+
+        stage_input = st.slider("Stage ID", 1, 4, 1)
+        deviation_input = st.date_input("Deviation Time")
+        cause_input = st.text_input("Cause")
+        comment_input = st.text_area("Comments")
+
+        if st.button("Create Alert"):
+            new_row = {
+                "requestID": next_id,
+                "systemName": system_input,
+                "status": status_input,
+                "currentAssignee": assignee_input,
+                "lastActionTakenBy": assignee_input,
+                "stageID": stage_input,
+                "Role": role_mapping_stage.get(stage_input, "Other"),
+                "deviationTime": pd.to_datetime(deviation_input),
+                "odsCauseTagName": cause_input,
+                "causeMessage": cause_input,
+                "comments": comment_input
+            }
+
+            st.session_state.master_df = pd.concat(
+                [st.session_state.master_df, pd.DataFrame([new_row])],
+                ignore_index=True
+            )
+
+            st.success(f"Alert {next_id} created successfully.")
+            st.rerun()
+
+        st.markdown("---")
+        st.subheader("Modify Existing Alert")
+
+        alert_ids = df["requestID"].astype(str).unique()
+        selected_alert = st.selectbox("Select Alert ID", alert_ids)
+
+        alert_row_index = df[df["requestID"].astype(str) == selected_alert].index[0]
+
+        status_edit = st.selectbox(
+            "Update Status",
+            sorted(df["status"].dropna().unique())
+        )
+
+        stage_edit = st.slider("Update Stage", 1, 4, int(df.loc[alert_row_index, "stageID"]))
+
+        assignee_edit = st.selectbox("Update Assignee", all_assignees)
+
+        comment_edit = st.text_area(
+            "Update Comments",
+            value=str(df.loc[alert_row_index, "comments"])
+        )
+
+        if st.button("Update Alert"):
+            st.session_state.master_df.loc[alert_row_index, "status"] = status_edit
+            st.session_state.master_df.loc[alert_row_index, "stageID"] = stage_edit
+            st.session_state.master_df.loc[alert_row_index, "currentAssignee"] = assignee_edit
+            st.session_state.master_df.loc[alert_row_index, "comments"] = comment_edit
+            st.session_state.master_df.loc[alert_row_index, "Role"] = role_mapping_stage.get(stage_edit, "Other")
+
+            st.success("Alert updated successfully.")
+            st.rerun()
