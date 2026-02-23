@@ -89,12 +89,13 @@ def render(df, all_systems):
                 key="upd_stage"
             )
 
-            # currentAssignee — dropdown
+            # currentAssignee — dropdown defaulting to existing value
+            current_assignee_val = str(upd_row.get("currentAssignee", ""))
             upd_assignee = st.selectbox(
                 "Current Assignee",
                 existing_assignees_list,
-                index=existing_assignees_list.index(upd_row.get("currentAssignee"))
-                      if upd_row.get("currentAssignee") in existing_assignees_list else 0,
+                index=existing_assignees_list.index(current_assignee_val)
+                      if current_assignee_val in existing_assignees_list else 0,
                 key="upd_assignee"
             )
 
