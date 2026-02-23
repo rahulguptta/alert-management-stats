@@ -170,6 +170,34 @@ if uploaded_file is not None:
         overall_stats.columns = ["Status", "Count"]
         st.dataframe(overall_stats, use_container_width=True)
 
+        # ================= STATUS BY SYSTEM TABLE =================
+        # Only show when "All" systems selected
+        if affiliate_selected == "All":
+            st.markdown("### Status by System")
+
+            # Use full date-filtered df (not active only) to include all statuses
+            status_by_system = (
+                df_filtered
+                .groupby(["systemName", "status"])
+                .size()
+                .reset_index(name="Count")
+            )
+
+            # Pivot: systems as rows, statuses as columns
+            pivot_table = status_by_system.pivot_table(
+                index="systemName",
+                columns="status",
+                values="Count",
+                aggfunc="sum",
+                fill_value=0
+            )
+
+            # Clean up axis labels
+            pivot_table.index.name = "System"
+            pivot_table.columns.name = None
+
+            st.dataframe(pivot_table, use_container_width=True)
+
     # ================= ALERT STATISTICS =================
     with tab2:
 
