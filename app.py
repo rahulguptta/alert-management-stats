@@ -23,7 +23,7 @@ if uploaded_file is not None:
     df = df_raw.iloc[1:].reset_index(drop=True)
     
     # Clean column names
-    df.columns = df.columns.astype(str).str.strip()strip()
+    df.columns = df.columns.astype(str).str.strip()
 
     # ================= SYSTEM NAME MAPPING =================
     system_mapping = {
