@@ -185,4 +185,192 @@ if uploaded_file is not None:
         auto_closed = df_month[df_month["status"].str.contains("System", case=False, na=False)].shape[0]
 
         overdue_3 = df_month[
-            (status_lower.str.contains("overdue", n
+            (status_lower.str.contains("overdue", na=False)) &
+            ((pd.Timestamp.today() - df_month["deviationTime"]).dt.days > 3)
+        ].shape[0]
+
+        target_revision = total_active
+
+        # ================= KPI LAYOUT =================
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Total Generated Alerts", total_generated)
+        col2.metric("Total Active", total_active)
+        col3.metric("Total Closed", total_closed)
+
+        st.markdown("---")
+
+        col1, col2 = st.columns(2)
+        col1.metric("Pending", pending)
+        col2.metric("Implemented", implemented)
+
+        col1, col2 = st.columns(2)
+        col1.metric("Work In Progress", wip)
+        col2.metric("Rejected", rejected)
+
+        col1, col2 = st.columns(2)
+        col1.metric("Overdue", overdue)
+        col2.metric("Auto Closed", auto_closed)
+
+        col1, col2 = st.columns(2)
+        col1.metric("No. of Overdue Alerts (>3 days)", overdue_3)
+        col2.metric("Target Date Revision (Active Alerts)", target_revision)
+
+        st.markdown("---")
+
+        # ================= ACTIVE ALERTS BY ROLE =================
+        st.markdown("### Active Alerts by Role")
+
+        df_active_month = df_month[~status_lower.str.contains("closed", na=False)].copy()
+
+        # Use live role_mapping from session state
+        df_active_month["Role"] = df_active_month["currentAssignee"].map(
+            st.session_state["people_roles"]
+        )
+        df_active_month["Role"] = df_active_month["Role"].fillna("Other")
+
+        role_df = (
+            df_active_month
+            .groupby("Role")
+            .size()
+            .reset_index(name="Count")
+            .sort_values("Count", ascending=False)
+        )
+
+        if not role_df.empty:
+            fig_role = px.bar(
+                role_df,
+                x="Role",
+                y="Count",
+                text="Count"
+            )
+            fig_role.update_layout(
+                xaxis_title="Role",
+                yaxis_title="Active Alerts",
+                xaxis=dict(type="category")
+            )
+            st.plotly_chart(fig_role, use_container_width=True)
+        else:
+            st.info("No active alerts in selected month.")
+
+    # ================= ALERT MANAGEMENT =================
+    with tab3:
+
+        st.subheader("Alert Management")
+
+        if df_filtered.empty:
+            st.warning("No data available for selected filters.")
+            st.stop()
+
+        col1, col2 = st.columns(2)
+
+        category_options = ["All", "Energy", "Production", "Environment"]
+        selected_category = col1.selectbox("Category", category_options)
+
+        deviation_options = ["All", "Pending"]
+        selected_deviation = col2.selectbox("Deviation", deviation_options)
+
+        df_mgmt = df_filtered.copy()
+
+        if selected_category == "Energy":
+            df_mgmt = df_mgmt[
+                df_mgmt["odsCauseTagName"].str.contains("energy", case=False, na=False)
+            ]
+        elif selected_category == "Production":
+            df_mgmt = df_mgmt[
+                df_mgmt["odsCauseTagName"].str.contains(
+                    "production|throughput|rate|capacity|output",
+                    case=False, na=False
+                )
+            ]
+        elif selected_category == "Environment":
+            df_mgmt = df_mgmt[
+                df_mgmt["odsCauseTagName"].str.contains(
+                    "environment|emission|flare|co2|pollution",
+                    case=False, na=False
+                )
+            ]
+
+        if selected_deviation == "Pending":
+            df_mgmt = df_mgmt[
+                df_mgmt["status"].str.contains("pending", case=False, na=False)
+            ]
+
+        if df_mgmt.empty:
+            st.info("No records found.")
+            st.stop()
+
+        display_df = pd.DataFrame({
+            "Alert ID": df_mgmt["requestID"],
+            "Category": df_mgmt["odsCauseTagName"],
+            "Cause (System)": df_mgmt["causeMessage"].fillna("") + " | " + df_mgmt["systemName"].fillna(""),
+            "KPI": df_mgmt["odsCauseTagName"],
+            "Deviation": df_mgmt["status"],
+            "Due Date": "",
+            "Comments": df_mgmt["comments"].fillna("")
+        })
+
+        display_df = display_df.reset_index(drop=True)
+        st.dataframe(display_df, use_container_width=True)
+
+    # ================= ADMIN CONTROLLED =================
+    with tab4:
+
+        st.subheader("Admin Controlled — Member Management")
+
+        DEFAULT_ROLES = [
+            "Process Engineer",
+            "Process Manager",
+            "Operation Engineer",
+            "Operation Manager"
+        ]
+
+        # All people = from data + any added via session state
+        all_people_for_admin = sorted(
+            set(all_existing_people) | set(st.session_state["people_roles"].keys())
+        )
+
+        person_options = ["Add New Member"] + all_people_for_admin
+
+        selected_person = st.selectbox("Select Member", person_options)
+
+        if selected_person == "Add New Member":
+            new_name = st.text_input("Enter Full Name")
+            new_role = st.selectbox("Assign Role", DEFAULT_ROLES)
+
+            if st.button("Add Member"):
+                if new_name.strip() == "":
+                    st.warning("Please enter a valid name.")
+                elif new_name.strip() in all_people_for_admin:
+                    st.warning(
+                        f"'{new_name.strip()}' already exists. "
+                        f"Select them from the dropdown to change their role."
+                    )
+                else:
+                    st.session_state["people_roles"][new_name.strip()] = new_role
+                    st.success(f"'{new_name.strip()}' added as '{new_role}'.")
+                    st.rerun()
+
+        else:
+            current_role = st.session_state["people_roles"].get(selected_person, "Not Assigned")
+            st.info(f"Current Role: **{current_role}**")
+
+            updated_role = st.selectbox(
+                "Change Role To",
+                DEFAULT_ROLES,
+                index=DEFAULT_ROLES.index(current_role) if current_role in DEFAULT_ROLES else 0
+            )
+
+            if st.button("Update Role"):
+                st.session_state["people_roles"][selected_person] = updated_role
+                st.success(f"Role of '{selected_person}' updated to '{updated_role}'.")
+                st.rerun()
+
+        # ================= CURRENT MEMBERS TABLE =================
+        st.markdown("---")
+        st.markdown("### Current Member Registry")
+
+        registry_df = pd.DataFrame(
+            list(st.session_state["people_roles"].items()),
+            columns=["Name", "Role"]
+        )
+        st.dataframe(registry_df, use_container_width=True)
