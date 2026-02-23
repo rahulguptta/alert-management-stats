@@ -10,13 +10,20 @@ uploaded_file = st.file_uploader("Upload Excel File", type=["xlsx"])
 if uploaded_file is not None:
 
     # ================= READ FILE =================
-    df = pd.read_excel(uploaded_file)
-
-    # Remove first row and use second row as header
-    df = df.iloc[1:].reset_index(drop=True)
-    df.columns = df.iloc[0]
-    df = df[1:].reset_index(drop=True)
-    df.columns = df.columns.str.strip()
+    # ================= READ FILE =================
+    df_raw = pd.read_excel(uploaded_file, header=None)
+    
+    # Remove first row
+    df_raw = df_raw.iloc[1:].reset_index(drop=True)
+    
+    # Second row becomes header
+    df_raw.columns = df_raw.iloc[0]
+    
+    # Remove that header row from data
+    df = df_raw.iloc[1:].reset_index(drop=True)
+    
+    # Clean column names
+    df.columns = df.columns.astype(str).str.strip()strip()
 
     # ================= SYSTEM NAME MAPPING =================
     system_mapping = {
