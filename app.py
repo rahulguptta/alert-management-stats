@@ -17,9 +17,6 @@ if uploaded_file is not None:
     df = df[2:].reset_index(drop=True)
     df.columns = df.columns.astype(str).str.strip()
 
-    # Convert datetime
-    df["deviationTime"] = pd.to_datetime(df["deviationTime"], errors="coerce")
-
     # -------- systemName Mapping --------
     system_mapping = {
         "COLD SECTIONS COLUMNS": "Column Section",
@@ -48,6 +45,9 @@ if uploaded_file is not None:
     }
     df["stageID"] = pd.to_numeric(df["stageID"], errors="coerce")
     df["Role"] = df["stageID"].map(role_mapping)
+
+     # Convert datetime
+    df["deviationTime"] = pd.to_datetime(df["deviationTime"], errors="coerce")
 
     # Remove closed alerts for charts
     df_active = df[~df["status"].str.lower().str.contains("closed", na=False)]
