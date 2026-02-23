@@ -135,6 +135,7 @@ def render(df, all_systems):
         )
         new_tag = st.selectbox("ODS Cause Tag Name", tags_for_system, key="new_tag")
 
+        # ================= AUTO VALUES (computed but shown last) =================
         auto_cause           = tag_to_cause.get(new_tag, "")
         auto_suggestion      = tag_to_suggestion.get(new_tag, "")
         auto_uom             = tag_to_uom.get(new_tag, "")
@@ -146,13 +147,7 @@ def render(df, all_systems):
         ]["deviationTime"].dropna()
         auto_last_occurrence = last_occ_df.max() if not last_occ_df.empty else "N/A"
 
-        with st.expander("Show Auto-filled Fields", expanded=False):
-            st.text_input("Cause Message",    value=auto_cause,                   disabled=True, key="new_cause_msg")
-            st.text_input("Suggestion",        value=auto_suggestion,              disabled=True, key="new_suggestion")
-            st.text_input("Cause UOM",         value=auto_uom,                     disabled=True, key="new_uom")
-            st.text_input("ODS Cause Tag ID",  value=str(auto_tag_id),             disabled=True, key="new_tag_id")
-            st.text_input("Last Occurrence",   value=str(auto_last_occurrence),    disabled=True, key="new_last_occ")
-
+        # ================= USER FIELDS FIRST =================
         st.markdown("**Fill In Fields**")
 
         new_cause_actual  = st.text_input("Cause Value Actual",  key="new_cause_actual")
@@ -165,14 +160,21 @@ def render(df, all_systems):
             new_gap = ""
             st.info("Gap: enter numeric values above to calculate")
 
-        new_due_date = st.date_input("Due Date",  key="new_due_date")
+        new_due_date = st.date_input("Due Date", key="new_due_date")
 
-        new_stage = st.selectbox("Stage ID", existing_stage_ids, key="new_stage")
+        new_stage    = st.selectbox("Stage ID",          existing_stage_ids,      key="new_stage")
+        new_assignee = st.selectbox("Current Assignee",  existing_assignees_list, key="new_assignee")
+        new_comments = st.text_area("Comments",                                   key="new_comments")
 
-        new_assignee = st.selectbox("Current Assignee", existing_assignees_list, key="new_assignee")
+        # ================= AUTO FIELDS LAST (collapsible) =================
+        with st.expander("Show Auto-filled Fields", expanded=False):
+            st.text_input("Cause Message",   value=auto_cause,                disabled=True, key="new_cause_msg")
+            st.text_input("Suggestion",       value=auto_suggestion,           disabled=True, key="new_suggestion")
+            st.text_input("Cause UOM",        value=auto_uom,                  disabled=True, key="new_uom")
+            st.text_input("ODS Cause Tag ID", value=str(auto_tag_id),          disabled=True, key="new_tag_id")
+            st.text_input("Last Occurrence",  value=str(auto_last_occurrence), disabled=True, key="new_last_occ")
 
-        new_comments = st.text_area("Comments", key="new_comments")
-
+        # ================= CREATE BUTTON =================
         if st.button("Create Alert", key="create_alert_btn"):
             next_id = get_next_request_id(st.session_state["df_master"])
 
@@ -202,5 +204,18 @@ def render(df, all_systems):
                 ignore_index=True
             )
 
-            st.success(f"Alert created successfully. Request ID: **{next_id}**")
-            st.rerun()
+            st.session_state["created_request_id"] = next_id
+
+        # ================= POPUP CONFIRMATION =================
+        if "created_request_id" in st.session_state and st.session_state["created_request_id"] is not None:
+
+            @st.dialog("Alert Created Successfully")
+            def show_confirmation():
+                st.success(f"Your alert has been created.")
+                st.markdown(f"### Request ID: `{st.session_state['created_request_id']}`")
+                st.markdown("Please note this ID for future reference.")
+                if st.button("OK", key="confirm_ok"):
+                    st.session_state["created_request_id"] = None
+                    st.rerun()
+
+            show_confirmation()
