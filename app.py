@@ -77,7 +77,7 @@ if uploaded_file is not None:
 
     affiliates = sorted(df["systemName"].dropna().unique())
     affiliate_selected = st.sidebar.selectbox(
-        "Select Affiliate",
+        "Select System",
         ["All"] + list(affiliates),
         index=0
     )
