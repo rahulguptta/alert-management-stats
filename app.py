@@ -213,11 +213,10 @@ if uploaded_file is not None:
         df_active_month = df_month[~status_lower.str.contains("closed", na=False)]
     
         role_mapping = {
-            'James Anderson': 'Process Engineer',
-            'Ahmed El-Sayed': 'Process Manager',
-            'Chen Wei': 'Operation Engineer',
-            'Lucas Silva': 'Operation Manager',
-            'Arjun Mehta': 'Operation Engineer'
+            'Parvaze Aalam': 'Process Engineer',
+            'Ashawani Arora': 'Process Manager',
+            'John Doe Paul': 'Operation Engineer',
+            'Rashmina Raj Kumari': 'Operation Manager'
         }
     
         df_active_month["Role"] = df_active_month["currentAssignee"].map(role_mapping)
