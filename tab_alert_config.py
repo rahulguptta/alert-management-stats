@@ -35,6 +35,7 @@ def render(df, all_systems):
 
     existing_stage_ids      = sorted(df["stageID"].dropna().unique().tolist())
     existing_assignees_list = sorted(df["currentAssignee"].dropna().unique().tolist())
+    existing_statuses       = sorted(df["status"].dropna().unique().tolist())
 
     left_col, right_col = st.columns(2)
 
@@ -44,19 +45,22 @@ def render(df, all_systems):
     with left_col:
         st.markdown("### Update Alert")
 
+        # Step 1: System
         upd_system = st.selectbox("System Name", all_systems, key="upd_system")
 
+        # Step 2: Tag filtered by system
         upd_tags_for_system = sorted(
             df[df["systemName"] == upd_system]["odsCauseTagName"].dropna().unique().tolist()
         )
         upd_tag = st.selectbox("ODS Cause Tag Name", upd_tags_for_system, key="upd_tag")
 
+        # Step 3: Alert ID filtered by system + tag
         upd_alerts = df[
             (df["systemName"] == upd_system) &
             (df["odsCauseTagName"] == upd_tag)
         ]["requestID"].dropna().unique().tolist()
 
-        upd_alert_id = st.selectbox("Select Alert ID", upd_alerts, key="upd_alert_id")
+        upd_alert_id = st.selectbox("Select Alert ID / Request ID", upd_alerts, key="upd_alert_id")
 
         upd_row = df[df["requestID"] == upd_alert_id]
         upd_row = upd_row.iloc[0] if not upd_row.empty else None
@@ -64,26 +68,29 @@ def render(df, all_systems):
         if upd_row is not None:
             st.markdown("**Edit Fields**")
 
-            upd_cause_actual = st.text_input(
-                "Cause Value Actual",
-                value=str(upd_row.get("causeValueActual", "")),
-                key="upd_cause_actual"
-            )
-            upd_cause_optimum = st.text_input(
-                "Cause Value Optimum",
-                value=str(upd_row.get("causeValueOptimum", "")),
-                key="upd_cause_optimum"
+            # deviationTime — current time, shown as read-only
+            current_time = pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S")
+            st.text_input(
+                "Deviation Time",
+                value=current_time,
+                disabled=True,
+                key="upd_deviation_time"
             )
 
-            try:
-                upd_gap = abs(float(upd_cause_actual) - float(upd_cause_optimum))
-                st.info(f"Gap (auto-calculated): **{upd_gap}**")
-            except:
-                upd_gap = ""
-                st.info("Gap: enter numeric values above to calculate")
+            # status — dropdown from existing statuses
+            current_status = upd_row.get("status", existing_statuses[0])
+            upd_status = st.selectbox(
+                "Status",
+                existing_statuses,
+                index=existing_statuses.index(current_status)
+                      if current_status in existing_statuses else 0,
+                key="upd_status"
+            )
 
+            # dueDate — date picker
             upd_due_date = st.date_input("Due Date", key="upd_due_date")
 
+            # stageID — dropdown from existing
             upd_stage = st.selectbox(
                 "Stage ID",
                 existing_stage_ids,
@@ -92,6 +99,7 @@ def render(df, all_systems):
                 key="upd_stage"
             )
 
+            # currentAssignee — dropdown
             upd_assignee = st.selectbox(
                 "Current Assignee",
                 existing_assignees_list,
@@ -100,6 +108,16 @@ def render(df, all_systems):
                 key="upd_assignee"
             )
 
+            # lastActionTakenBy — auto set to previous currentAssignee from df
+            last_action = upd_row.get("currentAssignee", "")
+            st.text_input(
+                "Last Action Taken By (auto)",
+                value=str(last_action),
+                disabled=True,
+                key="upd_last_action"
+            )
+
+            # comments
             upd_comments = st.text_area(
                 "Comments",
                 value=str(upd_row.get("comments", "")),
@@ -111,11 +129,11 @@ def render(df, all_systems):
                     st.session_state["df_master"]["requestID"] == upd_alert_id
                 ].index[0]
 
-                st.session_state["df_master"].at[idx, "causeValueActual"]  = upd_cause_actual
-                st.session_state["df_master"].at[idx, "causeValueOptimum"] = upd_cause_optimum
-                st.session_state["df_master"].at[idx, "gap"]               = upd_gap
+                st.session_state["df_master"].at[idx, "deviationTime"]     = pd.Timestamp.now()
+                st.session_state["df_master"].at[idx, "status"]            = upd_status
                 st.session_state["df_master"].at[idx, "dueDate"]           = str(upd_due_date)
                 st.session_state["df_master"].at[idx, "stageID"]           = upd_stage
+                st.session_state["df_master"].at[idx, "lastActionTakenBy"] = last_action
                 st.session_state["df_master"].at[idx, "currentAssignee"]   = upd_assignee
                 st.session_state["df_master"].at[idx, "comments"]          = upd_comments
 
@@ -135,7 +153,7 @@ def render(df, all_systems):
         )
         new_tag = st.selectbox("ODS Cause Tag Name", tags_for_system, key="new_tag")
 
-        # ================= AUTO VALUES (computed silently) =================
+        # ================= AUTO VALUES =================
         auto_cause           = tag_to_cause.get(new_tag, "")
         auto_suggestion      = tag_to_suggestion.get(new_tag, "")
         auto_uom             = tag_to_uom.get(new_tag, "")
@@ -160,10 +178,10 @@ def render(df, all_systems):
             new_gap = ""
             st.info("Gap: enter numeric values above to calculate")
 
-        new_due_date = st.date_input("Due Date",         key="new_due_date")
-        new_stage    = st.selectbox("Stage ID",          existing_stage_ids,      key="new_stage")
-        new_assignee = st.selectbox("Current Assignee",  existing_assignees_list, key="new_assignee")
-        new_comments = st.text_area("Comments",                                   key="new_comments")
+        new_due_date = st.date_input("Due Date",        key="new_due_date")
+        new_stage    = st.selectbox("Stage ID",         existing_stage_ids,      key="new_stage")
+        new_assignee = st.selectbox("Current Assignee", existing_assignees_list, key="new_assignee")
+        new_comments = st.text_area("Comments",                                  key="new_comments")
 
         # ================= CREATE BUTTON =================
         if st.button("Create Alert", key="create_alert_btn"):
