@@ -442,8 +442,6 @@ if uploaded_file is not None:
     # ================= ALERT CONFIGURATION =================
     with tab5:
 
-        st.subheader("Alert Configuration")
-
         # ================= LOOKUP MAPS FROM FULL DF =================
         tag_to_cause = df.dropna(subset=["odsCauseTagName", "causeMessage"]) \
             .drop_duplicates("odsCauseTagName") \
@@ -475,14 +473,12 @@ if uploaded_file is not None:
         with left_col:
             st.markdown("### Update Alert")
 
-            # Step 1: Select system
             upd_system = st.selectbox(
                 "System Name",
                 all_systems,
                 key="upd_system"
             )
 
-            # Step 2: Filter tags by system
             upd_tags_for_system = sorted(
                 df[df["systemName"] == upd_system]["odsCauseTagName"].dropna().unique().tolist()
             )
@@ -492,7 +488,6 @@ if uploaded_file is not None:
                 key="upd_tag"
             )
 
-            # Step 3: Filter alert IDs by system + tag
             upd_alerts = df[
                 (df["systemName"] == upd_system) &
                 (df["odsCauseTagName"] == upd_tag)
@@ -504,10 +499,8 @@ if uploaded_file is not None:
                 key="upd_alert_id"
             )
 
-            # Step 4: Load existing row
-            upd_row = df[df["requestID"] == upd_alert_id].iloc[0] if len(
-                df[df["requestID"] == upd_alert_id]
-            ) > 0 else None
+            upd_row = df[df["requestID"] == upd_alert_id]
+            upd_row = upd_row.iloc[0] if not upd_row.empty else None
 
             if upd_row is not None:
                 st.markdown("**Edit Fields**")
@@ -530,15 +523,12 @@ if uploaded_file is not None:
                     upd_gap = ""
                     st.info("Gap: enter numeric values above to calculate")
 
-                upd_due_date = st.date_input(
-                    "Due Date",
-                    key="upd_due_date"
-                )
+                upd_due_date = st.date_input("Due Date", key="upd_due_date")
 
                 upd_stage = st.selectbox(
                     "Stage ID",
                     existing_stage_ids,
-                    index=existing_stage_ids.index(upd_row.get("stageID")) 
+                    index=existing_stage_ids.index(upd_row.get("stageID"))
                           if upd_row.get("stageID") in existing_stage_ids else 0,
                     key="upd_stage"
                 )
@@ -570,7 +560,7 @@ if uploaded_file is not None:
                     st.session_state["df_master"].at[idx, "currentAssignee"] = upd_assignee
                     st.session_state["df_master"].at[idx, "comments"] = upd_comments
 
-                    st.success(f"Alert '{upd_alert_id}' updated successfully.")
+                    st.success(f"Alert **{upd_alert_id}** updated successfully.")
                     st.rerun()
 
         # ==================================================
@@ -579,14 +569,12 @@ if uploaded_file is not None:
         with right_col:
             st.markdown("### Create Alert")
 
-            # Step 1: Select system
             new_system = st.selectbox(
                 "System Name",
                 all_systems,
                 key="new_system"
             )
 
-            # Step 2: Filter tags by system
             tags_for_system = sorted(
                 df[df["systemName"] == new_system]["odsCauseTagName"].dropna().unique().tolist()
             )
@@ -596,34 +584,29 @@ if uploaded_file is not None:
                 key="new_tag"
             )
 
-            # Auto-mapped fields
-            auto_cause = tag_to_cause.get(new_tag, "")
+            # ================= AUTO FIELDS (collapsible) =================
+            auto_cause   = tag_to_cause.get(new_tag, "")
             auto_suggestion = tag_to_suggestion.get(new_tag, "")
-            auto_uom = tag_to_uom.get(new_tag, "")
-            auto_tag_id = tag_to_id.get(new_tag, "")
+            auto_uom     = tag_to_uom.get(new_tag, "")
+            auto_tag_id  = tag_to_id.get(new_tag, "")
 
-            # Last occurrence for same system + tag
             last_occ_df = df[
                 (df["systemName"] == new_system) &
                 (df["odsCauseTagName"] == new_tag)
             ]["deviationTime"].dropna()
             auto_last_occurrence = last_occ_df.max() if not last_occ_df.empty else "N/A"
 
-            st.markdown("**Auto-filled Fields**")
-            st.text_input("Cause Message", value=auto_cause, disabled=True, key="new_cause_msg")
-            st.text_input("Suggestion", value=auto_suggestion, disabled=True, key="new_suggestion")
-            st.text_input("Cause UOM", value=auto_uom, disabled=True, key="new_uom")
-            st.text_input("ODS Cause Tag ID", value=str(auto_tag_id), disabled=True, key="new_tag_id")
-            st.text_input(
-                "Last Occurrence",
-                value=str(auto_last_occurrence),
-                disabled=True,
-                key="new_last_occ"
-            )
+            with st.expander("Show Auto-filled Fields", expanded=False):
+                st.text_input("Cause Message",    value=auto_cause,          disabled=True, key="new_cause_msg")
+                st.text_input("Suggestion",        value=auto_suggestion,     disabled=True, key="new_suggestion")
+                st.text_input("Cause UOM",         value=auto_uom,            disabled=True, key="new_uom")
+                st.text_input("ODS Cause Tag ID",  value=str(auto_tag_id),    disabled=True, key="new_tag_id")
+                st.text_input("Last Occurrence",   value=str(auto_last_occurrence), disabled=True, key="new_last_occ")
 
+            # ================= USER FIELDS =================
             st.markdown("**Fill In Fields**")
 
-            new_cause_actual = st.text_input("Cause Value Actual", key="new_cause_actual")
+            new_cause_actual  = st.text_input("Cause Value Actual",  key="new_cause_actual")
             new_cause_optimum = st.text_input("Cause Value Optimum", key="new_cause_optimum")
 
             try:
@@ -650,27 +633,27 @@ if uploaded_file is not None:
             new_comments = st.text_area("Comments", key="new_comments")
 
             if st.button("Create Alert", key="create_alert_btn"):
-                new_request_id = str(uuid.uuid4())[:8].upper()
+                next_id = get_next_request_id(st.session_state["df_master"])
 
                 new_row = {
-                    "requestID": new_request_id,
-                    "systemName": new_system,
-                    "odsCauseTagName": new_tag,
-                    "odsCauseTagID": auto_tag_id,
-                    "causeMessage": auto_cause,
+                    "requestID":        next_id,
+                    "systemName":       new_system,
+                    "odsCauseTagName":  new_tag,
+                    "odsCauseTagID":    auto_tag_id,
+                    "causeMessage":     auto_cause,
                     "causeValueActual": new_cause_actual,
-                    "causeValueOptimum": new_cause_optimum,
-                    "gap": new_gap,
-                    "suggestion": auto_suggestion,
-                    "causeUom": auto_uom,
-                    "lastOccurrence": auto_last_occurrence,
-                    "deviationTime": pd.Timestamp.now(),
-                    "status": "Pending",
-                    "dueDate": str(new_due_date),
-                    "stageID": new_stage,
-                    "currentAssignee": new_assignee,
+                    "causeValueOptimum":new_cause_optimum,
+                    "gap":              new_gap,
+                    "suggestion":       auto_suggestion,
+                    "causeUom":         auto_uom,
+                    "lastOccurrence":   auto_last_occurrence,
+                    "deviationTime":    pd.Timestamp.now(),
+                    "status":           "Pending",
+                    "dueDate":          str(new_due_date),
+                    "stageID":          new_stage,
+                    "currentAssignee":  new_assignee,
                     "lastActionTakenBy": "",
-                    "comments": new_comments
+                    "comments":         new_comments
                 }
 
                 st.session_state["df_master"] = pd.concat(
@@ -678,5 +661,5 @@ if uploaded_file is not None:
                     ignore_index=True
                 )
 
-                st.success(f"Alert created successfully with ID: **{new_request_id}**")
+                st.success(f"Alert created successfully. Request ID: **{next_id}**")
                 st.rerun()
