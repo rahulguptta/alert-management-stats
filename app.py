@@ -5,15 +5,6 @@ import plotly.express as px
 st.set_page_config(layout="wide")
 st.title("Alert Dashboard")
 
-# ================= SESSION STATE INIT =================
-if "people_roles" not in st.session_state:
-    st.session_state["people_roles"] = {
-        'Parvaze Aalam': 'Process Engineer',
-        'Ashawani Arora': 'Process Manager',
-        'John Doe Paul': 'Operation Engineer',
-        'Rashmina Raj Kumari': 'Operation Manager'
-    }
-
 uploaded_file = st.file_uploader("Upload Excel File", type=["xlsx"])
 
 if uploaded_file is not None:
@@ -55,13 +46,30 @@ if uploaded_file is not None:
     # ================= DATETIME CONVERSION =================
     df["deviationTime"] = pd.to_datetime(df["deviationTime"], errors="coerce")
 
-    # ================= REMOVE CLOSED FOR CHARTS =================
-    df_active = df[~df["status"].str.lower().str.contains("closed", na=False)]
+    # ================= SESSION STATE INIT (after assignee mapping) =================
+    if "people_roles" not in st.session_state:
+        st.session_state["people_roles"] = {
+            'Parvaze Aalam': 'Process Engineer',
+            'Ashawani Arora': 'Process Manager',
+            'John Doe Paul': 'Operation Engineer',
+            'Rashmina Raj Kumari': 'Operation Manager'
+        }
 
     # ================= COLLECT ALL EXISTING PEOPLE FROM DATA =================
     existing_assignees = set(df["currentAssignee"].dropna().unique().tolist())
     existing_last_action = set(df["lastActionTakenBy"].dropna().unique().tolist())
     all_existing_people = sorted(existing_assignees.union(existing_last_action))
+
+    # Add any people from session state not yet in data
+    for person in st.session_state["people_roles"]:
+        if person not in all_existing_people:
+            all_existing_people = sorted(set(all_existing_people) | {person})
+
+    # ================= APPLY ROLE COLUMN TO FULL DATAFRAME =================
+    df["Role"] = df["currentAssignee"].map(st.session_state["people_roles"]).fillna("Other")
+
+    # ================= REMOVE CLOSED FOR CHARTS =================
+    df_active = df[~df["status"].str.lower().str.contains("closed", na=False)]
 
     # ================= SIDEBAR =================
     st.sidebar.header("Filters")
@@ -85,6 +93,28 @@ if uploaded_file is not None:
         index=0
     )
 
+    # ================= SIDEBAR DOWNLOAD =================
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("### Download")
+
+    @st.cache_data
+    def convert_df_to_excel(dataframe):
+        from io import BytesIO
+        output = BytesIO()
+        with pd.ExcelWriter(output, engine="openpyxl") as writer:
+            dataframe.to_excel(writer, index=False, sheet_name="Updated Data")
+        return output.getvalue()
+
+    excel_data = convert_df_to_excel(df)
+
+    st.sidebar.download_button(
+        label="Download Updated Data (Excel)",
+        data=excel_data,
+        file_name="updated_alert_data.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+
+    # ================= FILTER DATAFRAME =================
     df_filtered = df[
         (df["deviationTime"] >= pd.to_datetime(start_date)) &
         (df["deviationTime"] <= pd.to_datetime(end_date))
@@ -172,7 +202,6 @@ if uploaded_file is not None:
         status_lower = df_month["status"].str.lower()
 
         total_generated = len(df_month)
-
         total_closed = df_month[status_lower.str.contains("closed", na=False)].shape[0]
         total_active = total_generated - total_closed
 
@@ -222,12 +251,7 @@ if uploaded_file is not None:
 
         df_active_month = df_month[~status_lower.str.contains("closed", na=False)].copy()
 
-        # Use live role_mapping from session state
-        df_active_month["Role"] = df_active_month["currentAssignee"].map(
-            st.session_state["people_roles"]
-        )
-        df_active_month["Role"] = df_active_month["Role"].fillna("Other")
-
+        # Role already applied to df, so use it directly
         role_df = (
             df_active_month
             .groupby("Role")
@@ -324,13 +348,7 @@ if uploaded_file is not None:
             "Operation Manager"
         ]
 
-        # All people = from data + any added via session state
-        all_people_for_admin = sorted(
-            set(all_existing_people) | set(st.session_state["people_roles"].keys())
-        )
-
-        person_options = ["Add New Member"] + all_people_for_admin
-
+        person_options = ["Add New Member"] + all_existing_people
         selected_person = st.selectbox("Select Member", person_options)
 
         if selected_person == "Add New Member":
@@ -340,7 +358,7 @@ if uploaded_file is not None:
             if st.button("Add Member"):
                 if new_name.strip() == "":
                     st.warning("Please enter a valid name.")
-                elif new_name.strip() in all_people_for_admin:
+                elif new_name.strip() in all_existing_people:
                     st.warning(
                         f"'{new_name.strip()}' already exists. "
                         f"Select them from the dropdown to change their role."
@@ -362,6 +380,10 @@ if uploaded_file is not None:
 
             if st.button("Update Role"):
                 st.session_state["people_roles"][selected_person] = updated_role
+                # Update Role column in df immediately
+                df["Role"] = df["currentAssignee"].map(
+                    st.session_state["people_roles"]
+                ).fillna("Other")
                 st.success(f"Role of '{selected_person}' updated to '{updated_role}'.")
                 st.rerun()
 
