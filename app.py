@@ -257,70 +257,75 @@ if uploaded_file is not None:
         else:
             st.info("No active alerts in selected month.")
 
-    # ================= ALERT MANAGEMENT =================
+    # ================= Alert Management =================
     with tab3:
-
+    
         st.subheader("Alert Management")
-
-        category = st.selectbox(
-            "Category",
-            ["All", "Energy", "Production", "Environment"]
-        )
-
-        deviation = st.selectbox(
-            "Deviation",
-            ["All", "Pending"]
-        )
-
-        df_manage = df_filtered.copy()
-
-        if category == "Energy":
-            df_manage = df_manage[
-                df_manage["odsCauseTagName"].str.contains("energy", case=False, na=False)
+    
+        if df_filtered.empty:
+            st.warning("No data available for selected filters.")
+            st.stop()
+    
+        # ================= FILTER ROW =================
+        col1, col2 = st.columns(2)
+    
+        # -------- Category Filter --------
+        category_options = ["All", "Energy", "Production", "Environment"]
+        selected_category = col1.selectbox("Category", category_options)
+    
+        # -------- Deviation Filter --------
+        deviation_options = ["All", "Pending"]
+        selected_deviation = col2.selectbox("Deviation", deviation_options)
+    
+        df_mgmt = df_filtered.copy()
+    
+        # ================= CATEGORY LOGIC =================
+        if selected_category == "Energy":
+            df_mgmt = df_mgmt[
+                df_mgmt["odsCauseTagName"].str.contains("energy", case=False, na=False)
             ]
-        elif category == "Production":
-            df_manage = df_manage[
-                df_manage["odsCauseTagName"].str.contains(
-                    "production|output|throughput|rate",
+    
+        elif selected_category == "Production":
+            df_mgmt = df_mgmt[
+                df_mgmt["odsCauseTagName"].str.contains(
+                    "production|throughput|rate|capacity|output",
                     case=False,
                     na=False
                 )
             ]
-        elif category == "Environment":
-            df_manage = df_manage[
-                df_manage["odsCauseTagName"].str.contains(
-                    "environment|emission|waste|pollution",
+    
+        elif selected_category == "Environment":
+            df_mgmt = df_mgmt[
+                df_mgmt["odsCauseTagName"].str.contains(
+                    "environment|emission|flare|co2|pollution",
                     case=False,
                     na=False
                 )
             ]
-
-        if deviation == "Pending":
-            df_manage = df_manage[
-                df_manage["status"].str.contains("pending", case=False, na=False)
+    
+        # ================= DEVIATION LOGIC =================
+        if selected_deviation == "Pending":
+            df_mgmt = df_mgmt[
+                df_mgmt["status"].str.contains("pending", case=False, na=False)
             ]
-
-        display_cols = [
-            "requestID",
-            "systemName",
-            "causeMessage",
-            "odsCauseTagName",
-            "status"
-        ]
-
-        df_display = df_manage[display_cols].copy()
-        df_display.columns = [
-            "Alert ID",
-            "System",
-            "Cause",
-            "KPI (Request ID)",
-            "Status"
-        ]
-
-        st.dataframe(df_display, use_container_width=True)
-
-        st.markdown("### Comments")
-
-        for _, row in df_manage.iterrows():
-            with st.expander(f"View Comments - Alert {row['requestID']}"):
-                st.write(row.get("comments", "No Comments"))
+    
+        if df_mgmt.empty:
+            st.info("No records found.")
+            st.stop()
+    
+        # ================= TABLE STRUCTURE =================
+        display_df = pd.DataFrame({
+            "Alert ID": df_mgmt["requestID"],
+            "Category": df_mgmt["odsCauseTagName"],
+            "Cause (System)": df_mgmt["causeMessage"].fillna("") + " | " + df_mgmt["systemName"].fillna(""),
+            "KPI": df_mgmt["odsCauseTagName"],
+            "Deviation": df_mgmt["status"],
+            "Due Date": "",  # Blank as requested
+            "Comments": df_mgmt["comments"].fillna("")
+        })
+    
+        # Reset index for clean display
+        display_df = display_df.reset_index(drop=True)
+    
+        # ================= DISPLAY TABLE =================
+        st.dataframe(display_df, use_container_width=True)
