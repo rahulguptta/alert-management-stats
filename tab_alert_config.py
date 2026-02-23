@@ -36,6 +36,7 @@ def render(df, all_systems):
     existing_stage_ids      = sorted(df["stageID"].dropna().unique().tolist())
     existing_assignees_list = sorted(df["currentAssignee"].dropna().unique().tolist())
     existing_statuses       = sorted(df["status"].dropna().unique().tolist())
+    all_alert_ids           = sorted(df["requestID"].dropna().unique().tolist())
 
     left_col, right_col = st.columns(2)
 
@@ -45,30 +46,19 @@ def render(df, all_systems):
     with left_col:
         st.markdown("### Update Alert")
 
-        # Step 1: System
-        upd_system = st.selectbox("System Name", all_systems, key="upd_system")
-
-        # Step 2: Tag filtered by system
-        upd_tags_for_system = sorted(
-            df[df["systemName"] == upd_system]["odsCauseTagName"].dropna().unique().tolist()
+        # Only Alert ID selector — no system or tag filter
+        upd_alert_id = st.selectbox(
+            "Select Alert ID / Request ID",
+            all_alert_ids,
+            key="upd_alert_id"
         )
-        upd_tag = st.selectbox("ODS Cause Tag Name", upd_tags_for_system, key="upd_tag")
-
-        # Step 3: Alert ID filtered by system + tag
-        upd_alerts = df[
-            (df["systemName"] == upd_system) &
-            (df["odsCauseTagName"] == upd_tag)
-        ]["requestID"].dropna().unique().tolist()
-
-        upd_alert_id = st.selectbox("Select Alert ID / Request ID", upd_alerts, key="upd_alert_id")
 
         upd_row = df[df["requestID"] == upd_alert_id]
         upd_row = upd_row.iloc[0] if not upd_row.empty else None
 
         if upd_row is not None:
-            st.markdown("**Edit Fields**")
 
-            # deviationTime — current time, shown as read-only
+            # deviationTime — current time, read only
             current_time = pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S")
             st.text_input(
                 "Deviation Time",
@@ -77,7 +67,7 @@ def render(df, all_systems):
                 key="upd_deviation_time"
             )
 
-            # status — dropdown from existing statuses
+            # status — dropdown
             current_status = upd_row.get("status", existing_statuses[0])
             upd_status = st.selectbox(
                 "Status",
@@ -90,7 +80,7 @@ def render(df, all_systems):
             # dueDate — date picker
             upd_due_date = st.date_input("Due Date", key="upd_due_date")
 
-            # stageID — dropdown from existing
+            # stageID — dropdown
             upd_stage = st.selectbox(
                 "Stage ID",
                 existing_stage_ids,
@@ -108,11 +98,11 @@ def render(df, all_systems):
                 key="upd_assignee"
             )
 
-            # lastActionTakenBy — auto set to previous currentAssignee from df
-            last_action = upd_row.get("currentAssignee", "")
+            # lastActionTakenBy — auto from existing currentAssignee, read only
+            last_action = str(upd_row.get("currentAssignee", ""))
             st.text_input(
                 "Last Action Taken By (auto)",
-                value=str(last_action),
+                value=last_action,
                 disabled=True,
                 key="upd_last_action"
             )
