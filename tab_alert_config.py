@@ -46,7 +46,6 @@ def render(df, all_systems):
     with left_col:
         st.markdown("### Update Alert")
 
-        # Only Alert ID selector — no system or tag filter
         upd_alert_id = st.selectbox(
             "Select Alert ID / Request ID",
             all_alert_ids,
@@ -67,8 +66,9 @@ def render(df, all_systems):
                 key="upd_deviation_time"
             )
 
-            # status — dropdown
-            current_status = upd_row.get("status", existing_statuses[0])
+            # status — dropdown, store old status for popup
+            old_status     = str(upd_row.get("status", ""))
+            current_status = old_status
             upd_status = st.selectbox(
                 "Status",
                 existing_statuses,
@@ -100,7 +100,7 @@ def render(df, all_systems):
             )
 
             # lastActionTakenBy — auto from existing currentAssignee, read only
-            last_action = str(upd_row.get("currentAssignee", ""))
+            last_action = current_assignee_val
             st.text_input(
                 "Last Action Taken By (auto)",
                 value=last_action,
@@ -128,8 +128,30 @@ def render(df, all_systems):
                 st.session_state["df_master"].at[idx, "currentAssignee"]   = upd_assignee
                 st.session_state["df_master"].at[idx, "comments"]          = upd_comments
 
-                st.success(f"Alert **{upd_alert_id}** updated successfully.")
-                st.rerun()
+                # Store for popup
+                st.session_state["updated_alert_info"] = {
+                    "alert_id":   upd_alert_id,
+                    "old_status": old_status,
+                    "new_status": upd_status
+                }
+
+            # ================= UPDATE POPUP =================
+            if "updated_alert_info" in st.session_state and st.session_state["updated_alert_info"] is not None:
+
+                @st.dialog("Alert Updated Successfully")
+                def show_update_confirmation():
+                    info = st.session_state["updated_alert_info"]
+                    st.success(f"Alert **{info['alert_id']}** has been updated.")
+                    st.markdown("**Status Change:**")
+                    col1, col2, col3 = st.columns([2, 1, 2])
+                    col1.error(f"{info['old_status']}")
+                    col2.markdown("<div style='text-align:center; font-size:20px;'>→</div>", unsafe_allow_html=True)
+                    col3.success(f"{info['new_status']}")
+                    if st.button("OK", key="update_confirm_ok"):
+                        st.session_state["updated_alert_info"] = None
+                        st.rerun()
+
+                show_update_confirmation()
 
     # ==================================================
     # SECTION 2 — CREATE ALERT
@@ -214,7 +236,7 @@ def render(df, all_systems):
             st.text_input("ODS Cause Tag ID", value=str(auto_tag_id),          disabled=True, key="new_tag_id")
             st.text_input("Last Occurrence",  value=str(auto_last_occurrence), disabled=True, key="new_last_occ")
 
-        # ================= POPUP CONFIRMATION =================
+        # ================= CREATE POPUP =================
         if "created_request_id" in st.session_state and st.session_state["created_request_id"] is not None:
 
             @st.dialog("Alert Created Successfully")
