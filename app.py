@@ -116,10 +116,25 @@ if "mapping_confirmed" not in st.session_state:
 if "show_mapping_ui" not in st.session_state:
     st.session_state["show_mapping_ui"] = False
 
+if "last_uploaded_file" not in st.session_state:
+    st.session_state["last_uploaded_file"] = None
+
 # ================= FILE UPLOAD =================
 uploaded_file = st.file_uploader("Upload Excel File", type=["xlsx"], key="excel_uploader")
 
 if uploaded_file is not None:
+
+    # ================= DETECT NEW FILE UPLOAD =================
+    # If a new file is uploaded reset mapping state so options appear fresh
+    if st.session_state["last_uploaded_file"] != uploaded_file.name:
+        st.session_state["last_uploaded_file"] = uploaded_file.name
+        st.session_state["mapping_confirmed"]  = False
+        st.session_state["show_mapping_ui"]    = False
+        st.session_state["system_mapping"]     = {}
+        st.session_state["assignee_mapping"]   = {}
+        st.session_state["people_roles"]       = {}
+        st.session_state["df_master"]          = None
+        st.session_state["roles_initialized"]  = False
 
     # ================= READ FILE =================
     df_raw = pd.read_excel(uploaded_file, header=None)
@@ -223,7 +238,6 @@ if uploaded_file is not None:
 
             st.markdown("---")
 
-            # -------- SAVE & LOAD --------
             if st.button("Save & Load Dashboard", key="save_load_btn"):
                 st.session_state["system_mapping"]    = {
                     k: v.strip() for k, v in updated_system_mapping.items()
@@ -321,6 +335,7 @@ if uploaded_file is not None:
         st.session_state["people_roles"]       = {}
         st.session_state["df_master"]          = None
         st.session_state["roles_initialized"]  = False
+        st.session_state["last_uploaded_file"] = None
         st.rerun()
 
     # ================= SIDEBAR DOWNLOAD =================
