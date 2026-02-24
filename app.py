@@ -36,7 +36,6 @@ DEFAULT_ROLES = [
 
 
 def generate_system_mapping(raw_systems):
-    """Generate random display names for systems not in default mapping."""
     default = {
         "COLD SECTIONS COLUMNS":           "Column Section",
         "QUENCH SYSTEM":                   "Quench Tower",
@@ -57,17 +56,14 @@ def generate_system_mapping(raw_systems):
 
 
 def generate_assignee_mapping(raw_assignees):
-    """Generate random display names for assignees not in default mapping."""
     default = {
         "PAVLOV ANDRES ROMERO PEREZ":          "Parvaze Aalam",
         "Ahmed Hassan Ahmed Faqqas":           "Ashawani Arora",
         "Omer Ali Abdullah AlAli":             "John Doe Paul",
         "Talaal Salah Abdullah Alabdulkareem": "Rashmina Raj Kumari"
     }
-    pool = RANDOM_USER_NAMES.copy()
-    # Remove already used default names from pool to avoid duplicates
     used = set(default.values())
-    pool = [p for p in pool if p not in used]
+    pool = [p for p in RANDOM_USER_NAMES if p not in used]
     random.shuffle(pool)
     mapping = {}
     pool_idx = 0
@@ -81,21 +77,19 @@ def generate_assignee_mapping(raw_assignees):
 
 
 def generate_roles_mapping(mapped_assignees):
-    """Assign default roles to all mapped assignee display names."""
     default = {
         "Parvaze Aalam":       "Process Engineer",
         "Ashawani Arora":      "Process Manager",
         "John Doe Paul":       "Operation Engineer",
         "Rashmina Raj Kumari": "Operation Manager"
     }
-    roles_cycle = DEFAULT_ROLES.copy()
     mapping = {}
     role_idx = 0
     for name in mapped_assignees:
         if name in default:
             mapping[name] = default[name]
         else:
-            mapping[name] = roles_cycle[role_idx % len(roles_cycle)]
+            mapping[name] = DEFAULT_ROLES[role_idx % len(DEFAULT_ROLES)]
             role_idx += 1
     return mapping
 
@@ -122,6 +116,7 @@ if "mapping_confirmed" not in st.session_state:
 if "show_mapping_ui" not in st.session_state:
     st.session_state["show_mapping_ui"] = False
 
+# ================= FILE UPLOAD =================
 uploaded_file = st.file_uploader("Upload Excel File", type=["xlsx"], key="excel_uploader")
 
 if uploaded_file is not None:
@@ -136,12 +131,16 @@ if uploaded_file is not None:
     raw_systems   = sorted(df_raw["systemName"].dropna().unique().tolist())
     raw_assignees = sorted(df_raw["currentAssignee"].dropna().unique().tolist())
 
-    # ================= GENERATE DEFAULT MAPPINGS IF NOT SET =================
+    # ================= GENERATE MAPPINGS IF NOT SET =================
     if not st.session_state["system_mapping"]:
         st.session_state["system_mapping"] = generate_system_mapping(raw_systems)
 
     if not st.session_state["assignee_mapping"]:
         st.session_state["assignee_mapping"] = generate_assignee_mapping(raw_assignees)
+
+    if not st.session_state["people_roles"]:
+        mapped_names = list(st.session_state["assignee_mapping"].values())
+        st.session_state["people_roles"] = generate_roles_mapping(mapped_names)
 
     # ================= PRE-LOAD UI =================
     if not st.session_state["mapping_confirmed"]:
@@ -151,79 +150,92 @@ if uploaded_file is not None:
         col_load, col_change = st.columns([1, 1])
 
         with col_load:
+            st.markdown("Ready to go with auto-generated mapping.")
             if st.button("Load Dashboard", key="load_dashboard_btn"):
-                # Apply current mappings and lock in
-                st.session_state["mapping_confirmed"]  = True
-                st.session_state["show_mapping_ui"]    = False
+                st.session_state["mapping_confirmed"] = True
+                st.session_state["show_mapping_ui"]   = False
                 st.rerun()
 
         with col_change:
+            st.markdown("Want to customize names and roles?")
             if st.button("Change Mapping", key="change_mapping_btn"):
                 st.session_state["show_mapping_ui"] = True
+                st.rerun()
 
-        # ================= MAPPING UI (only if Change Mapping clicked) =================
+        # ================= MAPPING UI =================
         if st.session_state["show_mapping_ui"]:
 
             st.markdown("---")
+            st.info(
+                "All fields are pre-filled with auto-generated names. "
+                "Edit any field you want, then click **Save & Load Dashboard**."
+            )
 
             # -------- SECTION 1: System Mapping --------
             st.markdown("#### 1. System Name Mapping")
+            st.caption("Raw system name → Display name shown in dashboard")
+
             updated_system_mapping = {}
-            for raw, display in st.session_state["system_mapping"].items():
-                updated_system_mapping[raw] = st.text_input(
-                    f"`{raw}`",
-                    value=display,
-                    key=f"sysmap_{raw}"
-                )
+            cols = st.columns(2)
+            for i, (raw, display) in enumerate(st.session_state["system_mapping"].items()):
+                with cols[i % 2]:
+                    updated_system_mapping[raw] = st.text_input(
+                        f"{raw}",
+                        value=display,
+                        key=f"sysmap_{raw}"
+                    )
 
             st.markdown("---")
 
             # -------- SECTION 2: Assignee Mapping --------
             st.markdown("#### 2. Assignee Name Mapping")
+            st.caption("Raw assignee name → Display name shown in dashboard")
+
             updated_assignee_mapping = {}
-            for raw, display in st.session_state["assignee_mapping"].items():
-                updated_assignee_mapping[raw] = st.text_input(
-                    f"`{raw}`",
-                    value=display,
-                    key=f"assmap_{raw}"
-                )
+            cols2 = st.columns(2)
+            for i, (raw, display) in enumerate(st.session_state["assignee_mapping"].items()):
+                with cols2[i % 2]:
+                    updated_assignee_mapping[raw] = st.text_input(
+                        f"{raw}",
+                        value=display,
+                        key=f"assmap_{raw}"
+                    )
 
             st.markdown("---")
 
             # -------- SECTION 3: Roles Mapping --------
-            # Roles are based on mapped assignee display names
             st.markdown("#### 3. Role Mapping")
+            st.caption("Assignee display name → Role in dashboard")
 
-            # Build current roles from mapped assignee names
             mapped_display_names = list(updated_assignee_mapping.values())
-            if not st.session_state["people_roles"]:
-                current_roles = generate_roles_mapping(mapped_display_names)
-            else:
-                current_roles = st.session_state["people_roles"]
-
             updated_roles = {}
-            for name in mapped_display_names:
-                current_role = current_roles.get(name, DEFAULT_ROLES[0])
-                updated_roles[name] = st.selectbox(
-                    f"{name}",
-                    DEFAULT_ROLES,
-                    index=DEFAULT_ROLES.index(current_role)
-                          if current_role in DEFAULT_ROLES else 0,
-                    key=f"rolemap_{name}"
-                )
+            cols3 = st.columns(2)
+            for i, name in enumerate(mapped_display_names):
+                current_role = st.session_state["people_roles"].get(name, DEFAULT_ROLES[0])
+                with cols3[i % 2]:
+                    updated_roles[name] = st.selectbox(
+                        f"{name}",
+                        DEFAULT_ROLES,
+                        index=DEFAULT_ROLES.index(current_role)
+                              if current_role in DEFAULT_ROLES else 0,
+                        key=f"rolemap_{name}"
+                    )
 
             st.markdown("---")
 
-            if st.button("Save Mapping", key="save_mapping_btn"):
-                st.session_state["system_mapping"]   = {
+            # -------- SAVE & LOAD --------
+            if st.button("Save & Load Dashboard", key="save_load_btn"):
+                st.session_state["system_mapping"]    = {
                     k: v.strip() for k, v in updated_system_mapping.items()
                 }
-                st.session_state["assignee_mapping"] = {
+                st.session_state["assignee_mapping"]  = {
                     k: v.strip() for k, v in updated_assignee_mapping.items()
                 }
-                st.session_state["people_roles"]     = updated_roles
+                st.session_state["people_roles"]      = updated_roles
                 st.session_state["roles_initialized"] = True
-                st.success("Mapping saved. Click **Load Dashboard** to proceed.")
+                st.session_state["mapping_confirmed"] = True
+                st.session_state["show_mapping_ui"]   = False
+                st.rerun()
 
         st.stop()
 
@@ -247,7 +259,7 @@ if uploaded_file is not None:
     if st.session_state["df_master"] is None:
         st.session_state["df_master"] = df_raw.copy()
 
-    # ================= INIT DEFAULT ROLES ONCE =================
+    # ================= INIT ROLES ONCE =================
     if not st.session_state["roles_initialized"]:
         mapped_names = list(st.session_state["assignee_mapping"].values())
         st.session_state["people_roles"]      = generate_roles_mapping(mapped_names)
@@ -299,14 +311,16 @@ if uploaded_file is not None:
         key="system_select"
     )
 
-    # ================= SIDEBAR — RESET =================
+    # ================= SIDEBAR RESET =================
     st.sidebar.markdown("---")
     if st.sidebar.button("Re-upload / Reset", key="reset_mapping_btn"):
-        for key in [
-            "mapping_confirmed", "show_mapping_ui", "system_mapping",
-            "assignee_mapping", "df_master", "roles_initialized", "people_roles"
-        ]:
-            st.session_state[key] = False if "confirmed" in key or "initialized" in key or "show" in key else None if key in ["df_master"] else {}
+        st.session_state["mapping_confirmed"]  = False
+        st.session_state["show_mapping_ui"]    = False
+        st.session_state["system_mapping"]     = {}
+        st.session_state["assignee_mapping"]   = {}
+        st.session_state["people_roles"]       = {}
+        st.session_state["df_master"]          = None
+        st.session_state["roles_initialized"]  = False
         st.rerun()
 
     # ================= SIDEBAR DOWNLOAD =================
