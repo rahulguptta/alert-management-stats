@@ -22,7 +22,12 @@ if "df_master" not in st.session_state:
     st.session_state["df_master"] = None
 
 if "system_mapping" not in st.session_state:
-    st.session_state["system_mapping"] = {}
+    st.session_state["system_mapping"] = {
+        "COLD SECTIONS COLUMNS":              "Column Section",
+        "QUENCH SYSTEM":                      "Quench Tower",
+        "CHARGE GAS COMPRESSOR":              "CGC Section",
+        "ACETYLENE REACTORS OPTIMIZATION":    "Acetylene Reactors"
+    }
 
 if "mapping_confirmed" not in st.session_state:
     st.session_state["mapping_confirmed"] = False
@@ -38,39 +43,37 @@ if uploaded_file is not None:
     df_raw = df_raw.iloc[1:].reset_index(drop=True)
     df_raw.columns = df_raw.columns.astype(str).str.strip()
 
-    # ================= SYSTEM MAPPING UI =================
-    # Show mapping UI only once per file upload
+    # ================= MAPPING UI (only before confirmed) =================
     if not st.session_state["mapping_confirmed"]:
-
-        st.markdown("---")
-        st.markdown("### System Name Mapping")
-        st.markdown(
-            "You can provide custom display names for each system below. "
-            "If left unchanged, the original names will be used."
-        )
 
         raw_systems = sorted(df_raw["systemName"].dropna().unique().tolist())
 
-        default_mapping = {
-            "COLD SECTIONS COLUMNS":        "Column Section",
-            "QUENCH SYSTEM":                "Quench Tower",
-            "CHARGE GAS COMPRESSOR":        "CGC Section",
-            "ACETYLENE REACTORS OPTIMIZATION": "Acetylene Reactors"
-        }
-
-        user_mapping = {}
-        for system in raw_systems:
-            default_val = default_mapping.get(system, system)
-            user_mapping[system] = st.text_input(
-                f"Display name for:  `{system}`",
-                value=default_val,
-                key=f"sysmap_{system}"
+        # Optional mapping expander
+        with st.expander("⚙️ Customize System Name Mapping (optional)", expanded=False):
+            st.markdown(
+                "If you want to rename systems, update the display names below. "
+                "Otherwise just click **Load Dashboard** directly."
             )
+            user_mapping = {}
+            for system in raw_systems:
+                default_val = st.session_state["system_mapping"].get(system, system)
+                user_mapping[system] = st.text_input(
+                    f"`{system}`",
+                    value=default_val,
+                    key=f"sysmap_{system}"
+                )
 
-        if st.button("Confirm Mapping & Load Dashboard", key="confirm_mapping_btn"):
-            # Save only entries where user actually changed the name
-            final_mapping = {k: v.strip() for k, v in user_mapping.items() if v.strip() != k}
-            st.session_state["system_mapping"]   = final_mapping
+            if st.button("Save Mapping", key="save_mapping_btn"):
+                final_mapping = {
+                    k: v.strip()
+                    for k, v in user_mapping.items()
+                    if v.strip() != k
+                }
+                st.session_state["system_mapping"] = final_mapping
+                st.success("Mapping saved. Now click **Load Dashboard**.")
+
+        # Single load button always visible
+        if st.button("Load Dashboard", key="load_dashboard_btn"):
             st.session_state["mapping_confirmed"] = True
             st.rerun()
 
@@ -82,13 +85,13 @@ if uploaded_file is not None:
 
     # ================= ASSIGNEE MAPPING =================
     assignee_mapping = {
-        "PAVLOV ANDRES ROMERO PEREZ":           "Parvaze Aalam",
-        "Ahmed Hassan Ahmed Faqqas":            "Ashawani Arora",
-        "Omer Ali Abdullah AlAli":              "John Doe Paul",
-        "Talaal Salah Abdullah Alabdulkareem":  "Rashmina Raj Kumari"
+        "PAVLOV ANDRES ROMERO PEREZ":          "Parvaze Aalam",
+        "Ahmed Hassan Ahmed Faqqas":           "Ashawani Arora",
+        "Omer Ali Abdullah AlAli":             "John Doe Paul",
+        "Talaal Salah Abdullah Alabdulkareem": "Rashmina Raj Kumari"
     }
-    df_raw["currentAssignee"]    = df_raw["currentAssignee"].replace(assignee_mapping)
-    df_raw["lastActionTakenBy"]  = df_raw["lastActionTakenBy"].replace(assignee_mapping)
+    df_raw["currentAssignee"]   = df_raw["currentAssignee"].replace(assignee_mapping)
+    df_raw["lastActionTakenBy"] = df_raw["lastActionTakenBy"].replace(assignee_mapping)
 
     # ================= DATETIME CONVERSION =================
     df_raw["deviationTime"] = pd.to_datetime(df_raw["deviationTime"], errors="coerce")
@@ -100,10 +103,10 @@ if uploaded_file is not None:
     # ================= INIT DEFAULT ROLES ONCE =================
     if not st.session_state["roles_initialized"]:
         st.session_state["people_roles"] = {
-            'Parvaze Aalam':      'Process Engineer',
-            'Ashawani Arora':     'Process Manager',
-            'John Doe Paul':      'Operation Engineer',
-            'Rashmina Raj Kumari':'Operation Manager'
+            'Parvaze Aalam':       'Process Engineer',
+            'Ashawani Arora':      'Process Manager',
+            'John Doe Paul':       'Operation Engineer',
+            'Rashmina Raj Kumari': 'Operation Manager'
         }
         st.session_state["roles_initialized"] = True
 
@@ -153,11 +156,16 @@ if uploaded_file is not None:
         key="system_select"
     )
 
-    # ================= SIDEBAR — RESET MAPPING =================
+    # ================= SIDEBAR — RESET =================
     st.sidebar.markdown("---")
-    if st.sidebar.button("Re-upload / Reset Mapping", key="reset_mapping_btn"):
+    if st.sidebar.button("Re-upload / Reset", key="reset_mapping_btn"):
         st.session_state["mapping_confirmed"] = False
-        st.session_state["system_mapping"]    = {}
+        st.session_state["system_mapping"]    = {
+            "COLD SECTIONS COLUMNS":              "Column Section",
+            "QUENCH SYSTEM":                      "Quench Tower",
+            "CHARGE GAS COMPRESSOR":              "CGC Section",
+            "ACETYLENE REACTORS OPTIMIZATION":    "Acetylene Reactors"
+        }
         st.session_state["df_master"]         = None
         st.session_state["roles_initialized"] = False
         st.rerun()
