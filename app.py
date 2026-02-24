@@ -21,6 +21,12 @@ if "roles_initialized" not in st.session_state:
 if "df_master" not in st.session_state:
     st.session_state["df_master"] = None
 
+if "system_mapping" not in st.session_state:
+    st.session_state["system_mapping"] = {}
+
+if "mapping_confirmed" not in st.session_state:
+    st.session_state["mapping_confirmed"] = False
+
 uploaded_file = st.file_uploader("Upload Excel File", type=["xlsx"], key="excel_uploader")
 
 if uploaded_file is not None:
@@ -32,24 +38,57 @@ if uploaded_file is not None:
     df_raw = df_raw.iloc[1:].reset_index(drop=True)
     df_raw.columns = df_raw.columns.astype(str).str.strip()
 
-    # ================= SYSTEM NAME MAPPING =================
-    system_mapping = {
-        "COLD SECTIONS COLUMNS": "Column Section",
-        "QUENCH SYSTEM": "Quench Tower",
-        "CHARGE GAS COMPRESSOR": "CGC Section",
-        "ACETYLENE REACTORS OPTIMIZATION": "Acetylene Reactors"
-    }
-    df_raw["systemName"] = df_raw["systemName"].replace(system_mapping)
+    # ================= SYSTEM MAPPING UI =================
+    # Show mapping UI only once per file upload
+    if not st.session_state["mapping_confirmed"]:
+
+        st.markdown("---")
+        st.markdown("### System Name Mapping")
+        st.markdown(
+            "You can provide custom display names for each system below. "
+            "If left unchanged, the original names will be used."
+        )
+
+        raw_systems = sorted(df_raw["systemName"].dropna().unique().tolist())
+
+        default_mapping = {
+            "COLD SECTIONS COLUMNS":        "Column Section",
+            "QUENCH SYSTEM":                "Quench Tower",
+            "CHARGE GAS COMPRESSOR":        "CGC Section",
+            "ACETYLENE REACTORS OPTIMIZATION": "Acetylene Reactors"
+        }
+
+        user_mapping = {}
+        for system in raw_systems:
+            default_val = default_mapping.get(system, system)
+            user_mapping[system] = st.text_input(
+                f"Display name for:  `{system}`",
+                value=default_val,
+                key=f"sysmap_{system}"
+            )
+
+        if st.button("Confirm Mapping & Load Dashboard", key="confirm_mapping_btn"):
+            # Save only entries where user actually changed the name
+            final_mapping = {k: v.strip() for k, v in user_mapping.items() if v.strip() != k}
+            st.session_state["system_mapping"]   = final_mapping
+            st.session_state["mapping_confirmed"] = True
+            st.rerun()
+
+        st.stop()
+
+    # ================= APPLY SYSTEM MAPPING =================
+    if st.session_state["system_mapping"]:
+        df_raw["systemName"] = df_raw["systemName"].replace(st.session_state["system_mapping"])
 
     # ================= ASSIGNEE MAPPING =================
     assignee_mapping = {
-        "PAVLOV ANDRES ROMERO PEREZ": "Parvaze Aalam",
-        "Ahmed Hassan Ahmed Faqqas": "Ashawani Arora",
-        "Omer Ali Abdullah AlAli": "John Doe Paul",
-        "Talaal Salah Abdullah Alabdulkareem": "Rashmina Raj Kumari"
+        "PAVLOV ANDRES ROMERO PEREZ":           "Parvaze Aalam",
+        "Ahmed Hassan Ahmed Faqqas":            "Ashawani Arora",
+        "Omer Ali Abdullah AlAli":              "John Doe Paul",
+        "Talaal Salah Abdullah Alabdulkareem":  "Rashmina Raj Kumari"
     }
-    df_raw["currentAssignee"] = df_raw["currentAssignee"].replace(assignee_mapping)
-    df_raw["lastActionTakenBy"] = df_raw["lastActionTakenBy"].replace(assignee_mapping)
+    df_raw["currentAssignee"]    = df_raw["currentAssignee"].replace(assignee_mapping)
+    df_raw["lastActionTakenBy"]  = df_raw["lastActionTakenBy"].replace(assignee_mapping)
 
     # ================= DATETIME CONVERSION =================
     df_raw["deviationTime"] = pd.to_datetime(df_raw["deviationTime"], errors="coerce")
@@ -61,10 +100,10 @@ if uploaded_file is not None:
     # ================= INIT DEFAULT ROLES ONCE =================
     if not st.session_state["roles_initialized"]:
         st.session_state["people_roles"] = {
-            'Parvaze Aalam': 'Process Engineer',
-            'Ashawani Arora': 'Process Manager',
-            'John Doe Paul': 'Operation Engineer',
-            'Rashmina Raj Kumari': 'Operation Manager'
+            'Parvaze Aalam':      'Process Engineer',
+            'Ashawani Arora':     'Process Manager',
+            'John Doe Paul':      'Operation Engineer',
+            'Rashmina Raj Kumari':'Operation Manager'
         }
         st.session_state["roles_initialized"] = True
 
@@ -80,9 +119,9 @@ if uploaded_file is not None:
     df_active = df[~df["status"].str.lower().str.contains("closed", na=False)]
 
     # ================= EXISTING PEOPLE =================
-    existing_assignees  = set(df["currentAssignee"].dropna().unique().tolist())
+    existing_assignees   = set(df["currentAssignee"].dropna().unique().tolist())
     existing_last_action = set(df["lastActionTakenBy"].dropna().unique().tolist())
-    all_existing_people = sorted(
+    all_existing_people  = sorted(
         existing_assignees.union(existing_last_action) |
         set(st.session_state["people_roles"].keys())
     )
@@ -113,6 +152,15 @@ if uploaded_file is not None:
         index=0,
         key="system_select"
     )
+
+    # ================= SIDEBAR — RESET MAPPING =================
+    st.sidebar.markdown("---")
+    if st.sidebar.button("Re-upload / Reset Mapping", key="reset_mapping_btn"):
+        st.session_state["mapping_confirmed"] = False
+        st.session_state["system_mapping"]    = {}
+        st.session_state["df_master"]         = None
+        st.session_state["roles_initialized"] = False
+        st.rerun()
 
     # ================= SIDEBAR DOWNLOAD =================
     st.sidebar.markdown("---")
